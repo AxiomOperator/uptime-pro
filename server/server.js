@@ -77,8 +77,11 @@ log.info("server", "Loading modules");
 log.debug("server", "Importing express");
 const express = require("express");
 const expressStaticGzip = require("express-static-gzip");
-log.debug("server", "Importing redbean-node");
-const { R } = require("redbean-node");
+const { getPrisma } = require("./prisma");
+// NOTE: Do not call getPrisma() at module level — it creates a Prisma connection before
+// the DB migrations run. Use getPrisma() inside functions instead.
+// The module-level variable is kept for compatibility but lazy-initialized after DB init.
+let prisma = null;
 log.debug("server", "Importing jsonwebtoken");
 const jwt = require("jsonwebtoken");
 log.debug("server", "Importing http-graceful-shutdown");
@@ -225,6 +228,7 @@ let needSetup = false;
         await initDatabase(testMode);
     } catch (e) {
         log.error("server", "Failed to prepare your database: " + e.message);
+        log.error("server", e.stack);
         process.exit(1);
     }
 
@@ -390,7 +394,7 @@ let needSetup = false;
 
                 log.info("auth", "Username from JWT: " + decoded.username);
 
-                let user = await R.findOne("user", " username = ? AND active = 1 ", [decoded.username]);
+                let user = await prisma.user.findFirst({ where: { username: decoded.username, active: true } });
 
                 if (user) {
                     // Check if the password changed
@@ -477,10 +481,7 @@ let needSetup = false;
                     if (user.twofa_last_token !== data.token && verify) {
                         await afterLogin(socket, user);
 
-                        await R.exec("UPDATE `user` SET twofa_last_token = ? WHERE id = ? ", [
-                            data.token,
-                            socket.userID,
-                        ]);
+                        await prisma.$executeRaw`UPDATE \`user\` SET twofa_last_token = ${data.token} WHERE id = ${socket.userID}`;
 
                         log.info("auth", `Successfully logged in user ${data.username}. IP=${clientIP}`);
 
@@ -532,7 +533,7 @@ let needSetup = false;
                 checkLogin(socket);
                 await doubleCheckPassword(socket, currentPassword);
 
-                let user = await R.findOne("user", " id = ? AND active = 1 ", [socket.userID]);
+                let user = await prisma.user.findFirst({ where: { id: socket.userID, active: true } });
 
                 if (user.twofa_status === 0) {
                     let newSecret = genSecret();
@@ -545,7 +546,7 @@ let needSetup = false;
 
                     let uri = `otpauth://totp/Uptime%20Kuma:${user.username}?secret=${encodedSecret}`;
 
-                    await R.exec("UPDATE `user` SET twofa_secret = ? WHERE id = ? ", [newSecret, socket.userID]);
+                    await prisma.$executeRaw`UPDATE \`user\` SET twofa_secret = ${newSecret} WHERE id = ${socket.userID}`;
 
                     callback({
                         ok: true,
@@ -577,7 +578,7 @@ let needSetup = false;
                 checkLogin(socket);
                 await doubleCheckPassword(socket, currentPassword);
 
-                await R.exec("UPDATE `user` SET twofa_status = 1 WHERE id = ? ", [socket.userID]);
+                await prisma.$executeRaw`UPDATE \`user\` SET twofa_status = 1 WHERE id = ${socket.userID}`;
 
                 log.info("auth", `Saved 2FA token. IP=${clientIP}`);
 
@@ -630,7 +631,7 @@ let needSetup = false;
                 checkLogin(socket);
                 await doubleCheckPassword(socket, currentPassword);
 
-                let user = await R.findOne("user", " id = ? AND active = 1 ", [socket.userID]);
+                let user = await prisma.user.findFirst({ where: { id: socket.userID, active: true } });
 
                 let verify = notp.totp.verify(token, user.twofa_secret, twoFAVerifyOptions);
 
@@ -659,7 +660,7 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
-                let user = await R.findOne("user", " id = ? AND active = 1 ", [socket.userID]);
+                let user = await prisma.user.findFirst({ where: { id: socket.userID, active: true } });
 
                 if (user.twofa_status === 1) {
                     callback({
@@ -690,16 +691,14 @@ let needSetup = false;
                     throw new TranslatableError("passwordTooWeak");
                 }
 
-                if ((await R.knex("user").count("id as count").first()).count !== 0) {
+                if ((await prisma.user.count()) !== 0) {
                     throw new Error(
                         "Uptime Pro has been initialized. If you want to run setup again, please delete the database."
                     );
                 }
 
-                let user = R.dispense("user");
-                user.username = username;
-                user.password = await passwordHash.generate(password);
-                await R.store(user);
+                const hashedPassword = await passwordHash.generate(password);
+                await prisma.user.create({ data: { username: username, password: hashedPassword } });
 
                 needSetup = false;
 
@@ -725,7 +724,7 @@ let needSetup = false;
         socket.on("add", async (monitor, callback) => {
             try {
                 checkLogin(socket);
-                let bean = R.dispense("monitor");
+                let bean = new Monitor();
 
                 let notificationIDList = monitor.notificationIDList;
                 delete monitor.notificationIDList;
@@ -759,7 +758,7 @@ let needSetup = false;
                     }
                 }
 
-                bean.import(monitor);
+                Object.assign(bean, monitor);
                 // Map camelCase frontend property to snake_case database column
                 if (monitor.retryOnlyOnStatusCodeFailure !== undefined) {
                     bean.retry_only_on_status_code_failure = monitor.retryOnlyOnStatusCodeFailure;
@@ -768,7 +767,8 @@ let needSetup = false;
 
                 bean.validate();
 
-                await R.store(bean);
+                const createdMonitor = await prisma.monitor.create({ data: { ...bean } });
+                bean.id = createdMonitor.id;
 
                 await updateMonitorNotification(bean.id, notificationIDList);
 
@@ -802,7 +802,8 @@ let needSetup = false;
                 let removeGroupChildren = false;
                 checkLogin(socket);
 
-                let bean = await R.findOne("monitor", " id = ? ", [monitor.id]);
+                let bean = await prisma.monitor.findFirst({ where: { id: monitor.id } });
+                bean = Object.assign(new Monitor(), bean);
 
                 if (bean.user_id !== socket.userID) {
                     throw new Error("Permission denied.");
@@ -939,7 +940,9 @@ let needSetup = false;
 
                 bean.validate();
 
-                await R.store(bean);
+                const beanUpdateData = { ...bean };
+                delete beanUpdateData.id;
+                await prisma.monitor.update({ where: { id: bean.id }, data: beanUpdateData });
 
                 if (removeGroupChildren) {
                     await Monitor.unlinkAllChildren(monitor.id);
@@ -990,7 +993,8 @@ let needSetup = false;
 
                 log.info("monitor", `Get Monitor: ${monitorID} User ID: ${socket.userID}`);
 
-                let monitor = await R.findOne("monitor", " id = ? AND user_id = ? ", [monitorID, socket.userID]);
+                const monitorRow = await prisma.monitor.findFirst({ where: { id: monitorID, user_id: socket.userID } });
+                let monitor = Object.assign(new Monitor(), monitorRow);
                 const monitorData = [{ id: monitor.id, active: monitor.active }];
                 const preloadData = await Monitor.preparePreloadData(monitorData);
                 callback({
@@ -1038,15 +1042,10 @@ let needSetup = false;
 
                 const sqlHourOffset = Database.sqlHourOffset();
 
-                let list = await R.getAll(
-                    `
-                    SELECT *
-                    FROM heartbeat
-                    WHERE monitor_id = ?
-                      AND time > ${sqlHourOffset}
-                    ORDER BY time ASC
-                `,
-                    [monitorID, -period]
+                let list = await prisma.$queryRawUnsafe(
+                    `SELECT * FROM heartbeat WHERE monitor_id = ? AND time > ${sqlHourOffset} ORDER BY time ASC`,
+                    monitorID,
+                    -period
                 );
 
                 callback({
@@ -1113,7 +1112,7 @@ let needSetup = false;
                 const startTime = Date.now();
 
                 // Check if this is a group monitor
-                const monitor = await R.findOne("monitor", " id = ? AND user_id = ? ", [monitorID, socket.userID]);
+                const monitor = await prisma.monitor.findFirst({ where: { id: monitorID, user_id: socket.userID } });
 
                 // Log with context about deletion type
                 if (monitor && monitor.type === "group") {
@@ -1194,11 +1193,11 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
-                const list = await R.findAll("tag");
+                const list = await prisma.tag.findMany({});
 
                 callback({
                     ok: true,
-                    tags: list.map((bean) => bean.toJSON()),
+                    tags: list.map((bean) => ({ id: bean.id, name: bean.name, color: bean.color })),
                 });
             } catch (e) {
                 callback({
@@ -1212,14 +1211,11 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
-                let bean = R.dispense("tag");
-                bean.name = tag.name;
-                bean.color = tag.color;
-                await R.store(bean);
+                const createdTag = await prisma.tag.create({ data: { name: tag.name, color: tag.color } });
 
                 callback({
                     ok: true,
-                    tag: await bean.toJSON(),
+                    tag: { id: createdTag.id, name: createdTag.name, color: createdTag.color },
                 });
             } catch (e) {
                 callback({
@@ -1233,7 +1229,7 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
-                let bean = await R.findOne("tag", " id = ? ", [tag.id]);
+                let bean = await prisma.tag.findFirst({ where: { id: tag.id } });
                 if (bean == null) {
                     callback({
                         ok: false,
@@ -1244,13 +1240,13 @@ let needSetup = false;
                 }
                 bean.name = tag.name;
                 bean.color = tag.color;
-                await R.store(bean);
+                await prisma.tag.update({ where: { id: bean.id }, data: { name: bean.name, color: bean.color } });
 
                 callback({
                     ok: true,
                     msg: "Saved.",
                     msgi18n: true,
-                    tag: await bean.toJSON(),
+                    tag: { id: bean.id, name: bean.name, color: bean.color },
                 });
             } catch (e) {
                 callback({
@@ -1264,7 +1260,7 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
-                await R.exec("DELETE FROM tag WHERE id = ? ", [tagID]);
+                await prisma.$executeRaw`DELETE FROM tag WHERE id = ${tagID}`;
 
                 callback({
                     ok: true,
@@ -1283,11 +1279,7 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
-                await R.exec("INSERT INTO monitor_tag (tag_id, monitor_id, value) VALUES (?, ?, ?)", [
-                    tagID,
-                    monitorID,
-                    value,
-                ]);
+                await prisma.$executeRaw`INSERT INTO monitor_tag (tag_id, monitor_id, value) VALUES (${tagID}, ${monitorID}, ${value})`;
 
                 await server.sendUpdateMonitorIntoList(socket, monitorID);
 
@@ -1308,11 +1300,7 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
-                await R.exec("UPDATE monitor_tag SET value = ? WHERE tag_id = ? AND monitor_id = ?", [
-                    value,
-                    tagID,
-                    monitorID,
-                ]);
+                await prisma.$executeRaw`UPDATE monitor_tag SET value = ${value} WHERE tag_id = ${tagID} AND monitor_id = ${monitorID}`;
 
                 await server.sendUpdateMonitorIntoList(socket, monitorID);
 
@@ -1333,11 +1321,7 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
-                await R.exec("DELETE FROM monitor_tag WHERE tag_id = ? AND monitor_id = ? AND value = ?", [
-                    tagID,
-                    monitorID,
-                    value,
-                ]);
+                await prisma.$executeRaw`DELETE FROM monitor_tag WHERE tag_id = ${tagID} AND monitor_id = ${monitorID} AND value = ${value}`;
 
                 await server.sendUpdateMonitorIntoList(socket, monitorID);
 
@@ -1360,9 +1344,9 @@ let needSetup = false;
 
                 let count;
                 if (monitorID == null) {
-                    count = await R.count("heartbeat", "important = 1");
+                    count = await prisma.heartbeat.count({ where: { important: true } });
                 } else {
-                    count = await R.count("heartbeat", "monitor_id = ? AND important = 1", [monitorID]);
+                    count = await prisma.heartbeat.count({ where: { monitor_id: monitorID, important: true } });
                 }
 
                 callback({
@@ -1383,28 +1367,19 @@ let needSetup = false;
 
                 let list;
                 if (monitorID == null) {
-                    list = await R.find(
-                        "heartbeat",
-                        `
-                        important = 1
-                        ORDER BY time DESC
-                        LIMIT ?
-                        OFFSET ?
-                    `,
-                        [count, offset]
-                    );
+                    list = await prisma.heartbeat.findMany({
+                        where: { important: true },
+                        orderBy: { time: "desc" },
+                        take: count,
+                        skip: offset,
+                    });
                 } else {
-                    list = await R.find(
-                        "heartbeat",
-                        `
-                        monitor_id = ?
-                        AND important = 1
-                        ORDER BY time DESC
-                        LIMIT ?
-                        OFFSET ?
-                    `,
-                        [monitorID, count, offset]
-                    );
+                    list = await prisma.heartbeat.findMany({
+                        where: { monitor_id: monitorID, important: true },
+                        orderBy: { time: "desc" },
+                        take: count,
+                        skip: offset,
+                    });
                 }
 
                 callback({
@@ -1637,7 +1612,7 @@ let needSetup = false;
 
                 log.info("manage", `Clear Events Monitor: ${monitorID} User ID: ${socket.userID}`);
 
-                await R.exec("UPDATE heartbeat SET msg = ?, important = ? WHERE monitor_id = ? ", ["", "0", monitorID]);
+                await prisma.$executeRaw`UPDATE heartbeat SET msg = ${""}, important = ${0} WHERE monitor_id = ${monitorID}`;
 
                 callback({
                     ok: true,
@@ -1726,7 +1701,7 @@ let needSetup = false;
         log.debug("auth", "check auto login");
         if (await setting("disableAuth")) {
             log.info("auth", "Disabled Auth: auto login to admin");
-            await afterLogin(socket, await R.findOne("user"));
+            await afterLogin(socket, await prisma.user.findFirst({}));
             socket.emit("autoLogin");
         } else {
             socket.emit("loginRequired");
@@ -1767,14 +1742,16 @@ let needSetup = false;
  * @returns {Promise<void>}
  */
 async function updateMonitorNotification(monitorID, notificationIDList) {
-    await R.exec("DELETE FROM monitor_notification WHERE monitor_id = ? ", [monitorID]);
+    await prisma.$executeRaw`DELETE FROM monitor_notification WHERE monitor_id = ${monitorID}`;
 
     for (let notificationID in notificationIDList) {
         if (notificationIDList[notificationID]) {
-            let relation = R.dispense("monitor_notification");
-            relation.monitor_id = monitorID;
-            relation.notification_id = notificationID;
-            await R.store(relation);
+            await prisma.monitorNotification.create({
+                data: {
+                    monitor_id: monitorID,
+                    notification_id: parseInt(notificationID),
+                },
+            });
         }
     }
 }
@@ -1787,7 +1764,7 @@ async function updateMonitorNotification(monitorID, notificationIDList) {
  * @throws {Error} The specified user does not own the monitor
  */
 async function checkOwner(userID, monitorID) {
-    let row = await R.getRow("SELECT id FROM monitor WHERE id = ? AND user_id = ? ", [monitorID, userID]);
+    let row = await prisma.monitor.findFirst({ where: { id: monitorID, user_id: userID } });
 
     if (!row) {
         throw new Error("You do not own this monitor.");
@@ -1849,7 +1826,10 @@ async function initDatabase(testMode = false) {
     // Patch the database
     await Database.patch(port, hostname);
 
-    let jwtSecretBean = await R.findOne("setting", " `key` = ? ", ["jwtSecret"]);
+    // Initialize prisma after DB migrations are complete so it sees the fully-patched schema
+    prisma = getPrisma();
+
+    let jwtSecretBean = await prisma.setting.findFirst({ where: { key: "jwtSecret" } });
 
     if (!jwtSecretBean) {
         log.info("server", "JWT secret is not found, generate one.");
@@ -1860,7 +1840,7 @@ async function initDatabase(testMode = false) {
     }
 
     // If there is no record in user table, it is a new Uptime Kuma instance, need to setup
-    if ((await R.knex("user").count("id as count").first()).count === 0) {
+    if ((await prisma.user.count()) === 0) {
         log.info("server", "No user, need setup");
         needSetup = true;
     }
@@ -1879,9 +1859,10 @@ async function startMonitor(userID, monitorID) {
 
     log.info("manage", `Resume Monitor: ${monitorID} User ID: ${userID}`);
 
-    await R.exec("UPDATE monitor SET active = 1 WHERE id = ? AND user_id = ? ", [monitorID, userID]);
+    await prisma.$executeRaw`UPDATE monitor SET active = 1 WHERE id = ${monitorID} AND user_id = ${userID}`;
 
-    let monitor = await R.findOne("monitor", " id = ? ", [monitorID]);
+    const startMonitorRow = await prisma.monitor.findFirst({ where: { id: monitorID } });
+    let monitor = Object.assign(new Monitor(), startMonitorRow);
 
     if (monitor.id in server.monitorList) {
         await server.monitorList[monitor.id].stop();
@@ -1912,7 +1893,7 @@ async function pauseMonitor(userID, monitorID) {
 
     log.info("manage", `Pause Monitor: ${monitorID} User ID: ${userID}`);
 
-    await R.exec("UPDATE monitor SET active = 0 WHERE id = ? AND user_id = ? ", [monitorID, userID]);
+    await prisma.$executeRaw`UPDATE monitor SET active = 0 WHERE id = ${monitorID} AND user_id = ${userID}`;
 
     if (monitorID in server.monitorList) {
         await server.monitorList[monitorID].stop();
@@ -1925,7 +1906,8 @@ async function pauseMonitor(userID, monitorID) {
  * @returns {Promise<void>}
  */
 async function startMonitors() {
-    let list = await R.find("monitor", " active = 1 ");
+    const activeRows = await prisma.monitor.findMany({ where: { active: true } });
+    let list = activeRows.map(r => Object.assign(new Monitor(), r));
 
     for (let monitor of list) {
         server.monitorList[monitor.id] = monitor;

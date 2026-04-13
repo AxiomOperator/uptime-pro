@@ -1,5 +1,5 @@
 const ping = require("@louislam/ping");
-const { R } = require("redbean-node");
+const { getPrisma } = require("./prisma");
 const {
     log,
     genSecret,
@@ -37,18 +37,16 @@ const crypto = require("crypto");
 const isWindows = process.platform === /^win/.test(process.platform);
 /**
  * Init or reset JWT secret
- * @returns {Promise<Bean>} JWT secret
+ * @returns {Promise<object>} JWT secret
  */
 exports.initJWTSecret = async () => {
-    let jwtSecretBean = await R.findOne("setting", " `key` = ? ", ["jwtSecret"]);
-
-    if (!jwtSecretBean) {
-        jwtSecretBean = R.dispense("setting");
-        jwtSecretBean.key = "jwtSecret";
-    }
-
-    jwtSecretBean.value = await passwordHash.generate(genSecret());
-    await R.store(jwtSecretBean);
+    const prisma = getPrisma();
+    const value = await passwordHash.generate(genSecret());
+    const jwtSecretBean = await prisma.setting.upsert({
+        where: { key: "jwtSecret" },
+        update: { value },
+        create: { key: "jwtSecret", value },
+    });
     return jwtSecretBean;
 };
 
@@ -653,7 +651,8 @@ exports.doubleCheckPassword = async (socket, currentPassword) => {
         throw new Error("Wrong data type?");
     }
 
-    let user = await R.findOne("user", " id = ? AND active = 1 ", [socket.userID]);
+    const prisma = getPrisma();
+    const user = await prisma.user.findFirst({ where: { id: socket.userID, active: true } });
 
     if (!user || !passwordHash.verify(currentPassword, user.password)) {
         throw new Error("Incorrect current password");
@@ -919,10 +918,8 @@ async function checkCertExpiryNotifications(monitor, tlsInfoObject) {
         return;
     }
 
-    let notificationList = await R.getAll(
-        "SELECT notification.* FROM notification, monitor_notification WHERE monitor_id = ? AND monitor_notification.notification_id = notification.id ",
-        [monitor.id]
-    );
+    const prisma = getPrisma();
+    const notificationList = await prisma.$queryRaw`SELECT notification.* FROM notification, monitor_notification WHERE monitor_id = ${monitor.id} AND monitor_notification.notification_id = notification.id`;
 
     if (!notificationList.length > 0) {
         // fail fast. If no notification is set, all the following checks can be skipped.

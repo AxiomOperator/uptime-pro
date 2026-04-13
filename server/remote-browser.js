@@ -1,4 +1,4 @@
-const { R } = require("redbean-node");
+const { getPrisma } = require("./prisma");
 
 class RemoteBrowser {
     /**
@@ -8,7 +8,8 @@ class RemoteBrowser {
      * @returns {Promise<Bean>} Remote Browser
      */
     static async get(remoteBrowserID, userID) {
-        let bean = await R.findOne("remote_browser", " id = ? AND user_id = ? ", [remoteBrowserID, userID]);
+        const prisma = getPrisma();
+        let bean = await prisma.remoteBrowser.findFirst({ where: { id: remoteBrowserID, user_id: userID } });
 
         if (!bean) {
             throw new Error("Remote browser not found");
@@ -25,23 +26,33 @@ class RemoteBrowser {
      * @returns {Promise<Bean>} Updated Remote Browser
      */
     static async save(remoteBrowser, remoteBrowserID, userID) {
+        const prisma = getPrisma();
         let bean;
 
         if (remoteBrowserID) {
-            bean = await R.findOne("remote_browser", " id = ? AND user_id = ? ", [remoteBrowserID, userID]);
+            bean = await prisma.remoteBrowser.findFirst({ where: { id: remoteBrowserID, user_id: userID } });
 
             if (!bean) {
                 throw new Error("Remote browser not found");
             }
+
+            bean = await prisma.remoteBrowser.update({
+                where: { id: remoteBrowserID },
+                data: {
+                    user_id: userID,
+                    name: remoteBrowser.name,
+                    url: remoteBrowser.url,
+                },
+            });
         } else {
-            bean = R.dispense("remote_browser");
+            bean = await prisma.remoteBrowser.create({
+                data: {
+                    user_id: userID,
+                    name: remoteBrowser.name,
+                    url: remoteBrowser.url,
+                },
+            });
         }
-
-        bean.user_id = userID;
-        bean.name = remoteBrowser.name;
-        bean.url = remoteBrowser.url;
-
-        await R.store(bean);
 
         return bean;
     }
@@ -53,16 +64,17 @@ class RemoteBrowser {
      * @returns {Promise<void>}
      */
     static async delete(remoteBrowserID, userID) {
-        let bean = await R.findOne("remote_browser", " id = ? AND user_id = ? ", [remoteBrowserID, userID]);
+        const prisma = getPrisma();
+        let bean = await prisma.remoteBrowser.findFirst({ where: { id: remoteBrowserID, user_id: userID } });
 
         if (!bean) {
             throw new Error("Remote Browser not found");
         }
 
         // Delete removed remote browser from monitors if exists
-        await R.exec("UPDATE monitor SET remote_browser = null WHERE remote_browser = ?", [remoteBrowserID]);
+        await prisma.$executeRaw`UPDATE monitor SET remote_browser = null WHERE remote_browser = ${remoteBrowserID}`;
 
-        await R.trash(bean);
+        await prisma.remoteBrowser.delete({ where: { id: bean.id } });
     }
 }
 

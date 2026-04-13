@@ -1,6 +1,6 @@
 const { checkLogin } = require("../util-server");
 const { log } = require("../../src/util");
-const { R } = require("redbean-node");
+const { getPrisma } = require("../prisma");
 const { nanoid } = require("nanoid");
 const passwordHash = require("../password-hash");
 const apicache = require("../modules/apicache");
@@ -73,7 +73,8 @@ module.exports.apiKeySocketHandler = (socket) => {
 
             log.debug("apikeys", `Deleted API Key: ${keyID} User ID: ${socket.userID}`);
 
-            await R.exec("DELETE FROM api_key WHERE id = ? AND user_id = ? ", [keyID, socket.userID]);
+            const prisma = getPrisma();
+            await prisma.$executeRaw`DELETE FROM api_key WHERE id = ${keyID} AND user_id = ${socket.userID}`;
 
             apicache.clear();
 
@@ -98,7 +99,8 @@ module.exports.apiKeySocketHandler = (socket) => {
 
             log.debug("apikeys", `Disabled Key: ${keyID} User ID: ${socket.userID}`);
 
-            await R.exec("UPDATE api_key SET active = 0 WHERE id = ? ", [keyID]);
+            const prisma = getPrisma();
+            await prisma.$executeRaw`UPDATE api_key SET active = 0 WHERE id = ${keyID}`;
 
             apicache.clear();
 
@@ -123,7 +125,8 @@ module.exports.apiKeySocketHandler = (socket) => {
 
             log.debug("apikeys", `Enabled Key: ${keyID} User ID: ${socket.userID}`);
 
-            await R.exec("UPDATE api_key SET active = 1 WHERE id = ? ", [keyID]);
+            const prisma = getPrisma();
+            await prisma.$executeRaw`UPDATE api_key SET active = 1 WHERE id = ${keyID}`;
 
             apicache.clear();
 

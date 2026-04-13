@@ -2,7 +2,8 @@ const dayjs = require("dayjs");
 const { UP, MAINTENANCE, DOWN, PENDING } = require("../src/util");
 const { LimitQueue } = require("./utils/limit-queue");
 const { log } = require("../src/util");
-const { R } = require("redbean-node");
+const { getPrisma } = require("./prisma");
+const prisma = getPrisma();
 
 /**
  * Calculates the uptime of a monitor.
@@ -126,18 +127,18 @@ class UptimeCalculator {
         let now = this.getCurrentDate();
 
         // Load minutely data from database (recent 24 hours only)
-        let minutelyStatBeans = await R.find("stat_minutely", " monitor_id = ? AND timestamp > ? ORDER BY timestamp", [
-            monitorID,
-            this.getMinutelyKey(now.subtract(24, "hour")),
-        ]);
+        let minutelyStatBeans = await prisma.statMinutely.findMany({
+            where: { monitor_id: monitorID, timestamp: { gt: this.getMinutelyKey(now.subtract(24, "hour")) } },
+            orderBy: { timestamp: "asc" },
+        });
 
         for (let bean of minutelyStatBeans) {
             let data = {
                 up: bean.up,
                 down: bean.down,
                 avgPing: bean.ping,
-                minPing: bean.pingMin,
-                maxPing: bean.pingMax,
+                minPing: bean.ping_min,
+                maxPing: bean.ping_max,
             };
 
             if (bean.extras != null) {
@@ -152,18 +153,18 @@ class UptimeCalculator {
         }
 
         // Load hourly data from database (recent 30 days only)
-        let hourlyStatBeans = await R.find("stat_hourly", " monitor_id = ? AND timestamp > ? ORDER BY timestamp", [
-            monitorID,
-            this.getHourlyKey(now.subtract(30, "day")),
-        ]);
+        let hourlyStatBeans = await prisma.statHourly.findMany({
+            where: { monitor_id: monitorID, timestamp: { gt: this.getHourlyKey(now.subtract(30, "day")) } },
+            orderBy: { timestamp: "asc" },
+        });
 
         for (let bean of hourlyStatBeans) {
             let data = {
                 up: bean.up,
                 down: bean.down,
                 avgPing: bean.ping,
-                minPing: bean.pingMin,
-                maxPing: bean.pingMax,
+                minPing: bean.ping_min,
+                maxPing: bean.ping_max,
             };
 
             if (bean.extras != null) {
@@ -177,18 +178,18 @@ class UptimeCalculator {
         }
 
         // Load daily data from database (recent 365 days only)
-        let dailyStatBeans = await R.find("stat_daily", " monitor_id = ? AND timestamp > ? ORDER BY timestamp", [
-            monitorID,
-            this.getDailyKey(now.subtract(365, "day")),
-        ]);
+        let dailyStatBeans = await prisma.statDaily.findMany({
+            where: { monitor_id: monitorID, timestamp: { gt: this.getDailyKey(now.subtract(365, "day")) } },
+            orderBy: { timestamp: "asc" },
+        });
 
         for (let bean of dailyStatBeans) {
             let data = {
                 up: bean.up,
                 down: bean.down,
                 avgPing: bean.ping,
-                minPing: bean.pingMin,
-                maxPing: bean.pingMax,
+                minPing: bean.ping_min,
+                maxPing: bean.ping_max,
             };
 
             if (bean.extras != null) {
@@ -312,7 +313,11 @@ class UptimeCalculator {
                 dailyStatBean.extras = JSON.stringify(extras);
             }
         }
-        await R.store(dailyStatBean);
+        await prisma.statDaily.upsert({
+            where: { monitor_id_timestamp: { monitor_id: dailyStatBean.monitor_id, timestamp: dailyStatBean.timestamp } },
+            update: { up: dailyStatBean.up, down: dailyStatBean.down, ping: dailyStatBean.ping, ping_min: dailyStatBean.pingMin, ping_max: dailyStatBean.pingMax, extras: dailyStatBean.extras ?? null },
+            create: { monitor_id: dailyStatBean.monitor_id, timestamp: dailyStatBean.timestamp, up: dailyStatBean.up, down: dailyStatBean.down, ping: dailyStatBean.ping, ping_min: dailyStatBean.pingMin, ping_max: dailyStatBean.pingMax, extras: dailyStatBean.extras ?? null },
+        });
 
         let currentDate = this.getCurrentDate();
 
@@ -332,7 +337,11 @@ class UptimeCalculator {
                     hourlyStatBean.extras = JSON.stringify(extras);
                 }
             }
-            await R.store(hourlyStatBean);
+            await prisma.statHourly.upsert({
+                where: { monitor_id_timestamp: { monitor_id: hourlyStatBean.monitor_id, timestamp: hourlyStatBean.timestamp } },
+                update: { up: hourlyStatBean.up, down: hourlyStatBean.down, ping: hourlyStatBean.ping, ping_min: hourlyStatBean.pingMin, ping_max: hourlyStatBean.pingMax, extras: hourlyStatBean.extras ?? null },
+                create: { monitor_id: hourlyStatBean.monitor_id, timestamp: hourlyStatBean.timestamp, up: hourlyStatBean.up, down: hourlyStatBean.down, ping: hourlyStatBean.ping, ping_min: hourlyStatBean.pingMin, ping_max: hourlyStatBean.pingMax, extras: hourlyStatBean.extras ?? null },
+            });
         }
 
         // For migration mode, we don't need to store old hourly and minutely data, but we need 24-hour's minutely data
@@ -351,7 +360,11 @@ class UptimeCalculator {
                     minutelyStatBean.extras = JSON.stringify(extras);
                 }
             }
-            await R.store(minutelyStatBean);
+            await prisma.statMinutely.upsert({
+                where: { monitor_id_timestamp: { monitor_id: minutelyStatBean.monitor_id, timestamp: minutelyStatBean.timestamp } },
+                update: { up: minutelyStatBean.up, down: minutelyStatBean.down, ping: minutelyStatBean.ping, ping_min: minutelyStatBean.pingMin, ping_max: minutelyStatBean.pingMax, extras: minutelyStatBean.extras ?? null },
+                create: { monitor_id: minutelyStatBean.monitor_id, timestamp: minutelyStatBean.timestamp, up: minutelyStatBean.up, down: minutelyStatBean.down, ping: minutelyStatBean.ping, ping_min: minutelyStatBean.pingMin, ping_max: minutelyStatBean.pingMax, extras: minutelyStatBean.extras ?? null },
+            });
         }
 
         // No need to remove old data in migration mode
@@ -359,15 +372,9 @@ class UptimeCalculator {
             // Remove the old data
             // TODO: Improvement: Convert it to a job?
             log.debug("uptime_calc", "Remove old data");
-            await R.exec("DELETE FROM stat_minutely WHERE monitor_id = ? AND timestamp < ?", [
-                this.monitorID,
-                this.getMinutelyKey(currentDate.subtract(this.statMinutelyKeepHour, "hour"), false),
-            ]);
+            await prisma.$executeRaw`DELETE FROM stat_minutely WHERE monitor_id = ${this.monitorID} AND timestamp < ${this.getMinutelyKey(currentDate.subtract(this.statMinutelyKeepHour, "hour"), false)}`;
 
-            await R.exec("DELETE FROM stat_hourly WHERE monitor_id = ? AND timestamp < ?", [
-                this.monitorID,
-                this.getHourlyKey(currentDate.subtract(this.statHourlyKeepDay, "day"), false),
-            ]);
+            await prisma.$executeRaw`DELETE FROM stat_hourly WHERE monitor_id = ${this.monitorID} AND timestamp < ${this.getHourlyKey(currentDate.subtract(this.statHourlyKeepDay, "day"), false)}`;
         }
 
         return date;
@@ -376,19 +383,17 @@ class UptimeCalculator {
     /**
      * Get the daily stat bean
      * @param {number} timestamp milliseconds
-     * @returns {Promise<import("redbean-node").Bean>} stat_daily bean
+     * @returns {Promise<object>} stat_daily object
      */
     async getDailyStatBean(timestamp) {
         if (this.lastDailyStatBean && this.lastDailyStatBean.timestamp === timestamp) {
             return this.lastDailyStatBean;
         }
 
-        let bean = await R.findOne("stat_daily", " monitor_id = ? AND timestamp = ?", [this.monitorID, timestamp]);
+        let bean = await prisma.statDaily.findFirst({ where: { monitor_id: this.monitorID, timestamp: timestamp } });
 
         if (!bean) {
-            bean = R.dispense("stat_daily");
-            bean.monitor_id = this.monitorID;
-            bean.timestamp = timestamp;
+            bean = { monitor_id: this.monitorID, timestamp: timestamp };
         }
 
         this.lastDailyStatBean = bean;
@@ -398,19 +403,17 @@ class UptimeCalculator {
     /**
      * Get the hourly stat bean
      * @param {number} timestamp milliseconds
-     * @returns {Promise<import("redbean-node").Bean>} stat_hourly bean
+     * @returns {Promise<object>} stat_hourly object
      */
     async getHourlyStatBean(timestamp) {
         if (this.lastHourlyStatBean && this.lastHourlyStatBean.timestamp === timestamp) {
             return this.lastHourlyStatBean;
         }
 
-        let bean = await R.findOne("stat_hourly", " monitor_id = ? AND timestamp = ?", [this.monitorID, timestamp]);
+        let bean = await prisma.statHourly.findFirst({ where: { monitor_id: this.monitorID, timestamp: timestamp } });
 
         if (!bean) {
-            bean = R.dispense("stat_hourly");
-            bean.monitor_id = this.monitorID;
-            bean.timestamp = timestamp;
+            bean = { monitor_id: this.monitorID, timestamp: timestamp };
         }
 
         this.lastHourlyStatBean = bean;
@@ -420,19 +423,17 @@ class UptimeCalculator {
     /**
      * Get the minutely stat bean
      * @param {number} timestamp milliseconds
-     * @returns {Promise<import("redbean-node").Bean>} stat_minutely bean
+     * @returns {Promise<object>} stat_minutely object
      */
     async getMinutelyStatBean(timestamp) {
         if (this.lastMinutelyStatBean && this.lastMinutelyStatBean.timestamp === timestamp) {
             return this.lastMinutelyStatBean;
         }
 
-        let bean = await R.findOne("stat_minutely", " monitor_id = ? AND timestamp = ?", [this.monitorID, timestamp]);
+        let bean = await prisma.statMinutely.findFirst({ where: { monitor_id: this.monitorID, timestamp: timestamp } });
 
         if (!bean) {
-            bean = R.dispense("stat_minutely");
-            bean.monitor_id = this.monitorID;
-            bean.timestamp = timestamp;
+            bean = { monitor_id: this.monitorID, timestamp: timestamp };
         }
 
         this.lastMinutelyStatBean = bean;
@@ -850,11 +851,11 @@ class UptimeCalculator {
      * @returns {Promise<void>}
      */
     static async clearStatistics(monitorID) {
-        await R.exec("DELETE FROM heartbeat WHERE monitor_id = ?", [monitorID]);
+        await prisma.$executeRaw`DELETE FROM heartbeat WHERE monitor_id = ${monitorID}`;
 
-        await R.exec("DELETE FROM stat_minutely WHERE monitor_id = ?", [monitorID]);
-        await R.exec("DELETE FROM stat_hourly WHERE monitor_id = ?", [monitorID]);
-        await R.exec("DELETE FROM stat_daily WHERE monitor_id = ?", [monitorID]);
+        await prisma.$executeRaw`DELETE FROM stat_minutely WHERE monitor_id = ${monitorID}`;
+        await prisma.$executeRaw`DELETE FROM stat_hourly WHERE monitor_id = ${monitorID}`;
+        await prisma.$executeRaw`DELETE FROM stat_daily WHERE monitor_id = ${monitorID}`;
 
         await UptimeCalculator.remove(monitorID);
     }
@@ -864,10 +865,10 @@ class UptimeCalculator {
      * @returns {Promise<void>}
      */
     static async clearAllStatistics() {
-        await R.exec("DELETE FROM heartbeat");
-        await R.exec("DELETE FROM stat_minutely");
-        await R.exec("DELETE FROM stat_hourly");
-        await R.exec("DELETE FROM stat_daily");
+        await prisma.$executeRaw`DELETE FROM heartbeat`;
+        await prisma.$executeRaw`DELETE FROM stat_minutely`;
+        await prisma.$executeRaw`DELETE FROM stat_hourly`;
+        await prisma.$executeRaw`DELETE FROM stat_daily`;
 
         await UptimeCalculator.removeAll();
     }

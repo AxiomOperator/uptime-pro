@@ -1,5 +1,5 @@
 const axios = require("axios");
-const { R } = require("redbean-node");
+const { getPrisma } = require("./prisma");
 const https = require("https");
 const fsAsync = require("fs").promises;
 const path = require("path");
@@ -19,24 +19,35 @@ class DockerHost {
      * @returns {Promise<Bean>} Updated docker host
      */
     static async save(dockerHost, dockerHostID, userID) {
+        const prisma = getPrisma();
         let bean;
 
         if (dockerHostID) {
-            bean = await R.findOne("docker_host", " id = ? AND user_id = ? ", [dockerHostID, userID]);
+            bean = await prisma.dockerHost.findFirst({ where: { id: dockerHostID, user_id: userID } });
 
             if (!bean) {
                 throw new Error("docker host not found");
             }
+
+            bean = await prisma.dockerHost.update({
+                where: { id: dockerHostID },
+                data: {
+                    user_id: userID,
+                    docker_daemon: dockerHost.dockerDaemon,
+                    docker_type: dockerHost.dockerType,
+                    name: dockerHost.name,
+                },
+            });
         } else {
-            bean = R.dispense("docker_host");
+            bean = await prisma.dockerHost.create({
+                data: {
+                    user_id: userID,
+                    docker_daemon: dockerHost.dockerDaemon,
+                    docker_type: dockerHost.dockerType,
+                    name: dockerHost.name,
+                },
+            });
         }
-
-        bean.user_id = userID;
-        bean.docker_daemon = dockerHost.dockerDaemon;
-        bean.docker_type = dockerHost.dockerType;
-        bean.name = dockerHost.name;
-
-        await R.store(bean);
 
         return bean;
     }
@@ -48,16 +59,17 @@ class DockerHost {
      * @returns {Promise<void>}
      */
     static async delete(dockerHostID, userID) {
-        let bean = await R.findOne("docker_host", " id = ? AND user_id = ? ", [dockerHostID, userID]);
+        const prisma = getPrisma();
+        let bean = await prisma.dockerHost.findFirst({ where: { id: dockerHostID, user_id: userID } });
 
         if (!bean) {
             throw new Error("docker host not found");
         }
 
         // Delete removed proxy from monitors if exists
-        await R.exec("UPDATE monitor SET docker_host = null WHERE docker_host = ?", [dockerHostID]);
+        await prisma.$executeRaw`UPDATE monitor SET docker_host = null WHERE docker_host = ${dockerHostID}`;
 
-        await R.trash(bean);
+        await prisma.dockerHost.delete({ where: { id: bean.id } });
     }
 
     /**

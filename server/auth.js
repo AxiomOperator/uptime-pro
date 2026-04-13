@@ -1,6 +1,6 @@
 const basicAuth = require("express-basic-auth");
 const passwordHash = require("./password-hash");
-const { R } = require("redbean-node");
+const { getPrisma } = require("./prisma");
 const { log } = require("../src/util");
 const { loginRateLimiter, apiRateLimiter } = require("./rate-limiter");
 const { Settings } = require("./settings");
@@ -17,15 +17,13 @@ exports.login = async function (username, password) {
         return null;
     }
 
-    let user = await R.findOne("user", "TRIM(username) = ? AND active = 1 ", [username.trim()]);
+    const prisma = getPrisma();
+    let user = await prisma.user.findFirst({ where: { username: username.trim(), active: true } });
 
     if (user && passwordHash.verify(password, user.password)) {
         // Upgrade the hash to bcrypt
         if (passwordHash.needRehash(user.password)) {
-            await R.exec("UPDATE `user` SET password = ? WHERE id = ? ", [
-                await passwordHash.generate(password),
-                user.id,
-            ]);
+            await prisma.$executeRaw`UPDATE \`user\` SET password = ${await passwordHash.generate(password)} WHERE id = ${user.id}`;
         }
         return user;
     }
@@ -47,7 +45,8 @@ async function verifyAPIKey(key) {
     let index = key.substring(2, key.indexOf("_"));
     let clear = key.substring(key.indexOf("_") + 1, key.length);
 
-    let hash = await R.findOne("api_key", " id=? ", [index]);
+    const prisma = getPrisma();
+    let hash = await prisma.apiKey.findFirst({ where: { id: parseInt(index) } });
 
     if (hash === null) {
         return false;

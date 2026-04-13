@@ -1,4 +1,4 @@
-const { R } = require("redbean-node");
+const { getPrisma } = require("../prisma");
 const { checkLogin } = require("../util-server");
 const dayjs = require("dayjs");
 const { log } = require("../../src/util");
@@ -6,6 +6,7 @@ const ImageDataURI = require("../image-data-uri");
 const Database = require("../database");
 const apicache = require("../modules/apicache");
 const StatusPage = require("../model/status_page");
+const Incident = require("../model/incident");
 const { UptimeKumaServer } = require("../uptime-kuma-server");
 const { Settings } = require("../settings");
 
@@ -35,6 +36,7 @@ module.exports.statusPageSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
+            const prisma = getPrisma();
             let statusPageID = await StatusPage.slugToID(slug);
 
             if (!statusPageID) {
@@ -44,14 +46,16 @@ module.exports.statusPageSocketHandler = (socket) => {
             let incidentBean;
 
             if (incident.id) {
-                incidentBean = await R.findOne("incident", " id = ? AND status_page_id = ? ", [
-                    incident.id,
-                    statusPageID,
-                ]);
+                const row = await prisma.incident.findFirst({
+                    where: { id: incident.id, status_page_id: statusPageID },
+                });
+                if (row) {
+                    incidentBean = Object.assign(new Incident(), row);
+                }
             }
 
             if (incidentBean == null) {
-                incidentBean = R.dispense("incident");
+                incidentBean = new Incident();
             }
 
             incidentBean.title = incident.title;
@@ -62,12 +66,34 @@ module.exports.statusPageSocketHandler = (socket) => {
             incidentBean.status_page_id = statusPageID;
 
             if (incident.id) {
-                incidentBean.last_updated_date = R.isoDateTime(dayjs.utc());
+                incidentBean.last_updated_date = dayjs.utc().toDate();
+                const updated = await prisma.incident.update({
+                    where: { id: incidentBean.id },
+                    data: {
+                        title: incidentBean.title,
+                        content: incidentBean.content,
+                        style: incidentBean.style,
+                        pin: incidentBean.pin,
+                        active: incidentBean.active,
+                        last_updated_date: incidentBean.last_updated_date,
+                    },
+                });
+                Object.assign(incidentBean, updated);
             } else {
-                incidentBean.created_date = R.isoDateTime(dayjs.utc());
+                incidentBean.created_date = dayjs.utc().toDate();
+                const created = await prisma.incident.create({
+                    data: {
+                        title: incidentBean.title,
+                        content: incidentBean.content,
+                        style: incidentBean.style,
+                        pin: incidentBean.pin,
+                        active: incidentBean.active,
+                        status_page_id: incidentBean.status_page_id,
+                        created_date: incidentBean.created_date,
+                    },
+                });
+                Object.assign(incidentBean, created);
             }
-
-            await R.store(incidentBean);
 
             callback({
                 ok: true,
@@ -85,9 +111,10 @@ module.exports.statusPageSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
+            const prisma = getPrisma();
             let statusPageID = await StatusPage.slugToID(slug);
 
-            await R.exec("UPDATE incident SET pin = 0 WHERE pin = 1 AND status_page_id = ? ", [statusPageID]);
+            await prisma.$executeRaw`UPDATE incident SET pin = 0 WHERE pin = 1 AND status_page_id = ${statusPageID}`;
 
             callback({
                 ok: true,
@@ -125,6 +152,7 @@ module.exports.statusPageSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
+            const prisma = getPrisma();
             let statusPageID = await StatusPage.slugToID(slug);
             if (!statusPageID) {
                 callback({
@@ -135,8 +163,8 @@ module.exports.statusPageSocketHandler = (socket) => {
                 return;
             }
 
-            let bean = await R.findOne("incident", " id = ? AND status_page_id = ? ", [incidentID, statusPageID]);
-            if (!bean) {
+            let row = await prisma.incident.findFirst({ where: { id: incidentID, status_page_id: statusPageID } });
+            if (!row) {
                 callback({
                     ok: false,
                     msg: "Incident not found or access denied",
@@ -144,6 +172,8 @@ module.exports.statusPageSocketHandler = (socket) => {
                 });
                 return;
             }
+
+            let bean = Object.assign(new Incident(), row);
 
             try {
                 validateIncident(incident);
@@ -165,9 +195,19 @@ module.exports.statusPageSocketHandler = (socket) => {
             bean.content = incident.content;
             bean.style = incident.style;
             bean.pin = incident.pin !== false;
-            bean.lastUpdatedDate = R.isoDateTime(dayjs.utc());
+            bean.last_updated_date = dayjs.utc().toDate();
 
-            await R.store(bean);
+            const updated = await prisma.incident.update({
+                where: { id: bean.id },
+                data: {
+                    title: bean.title,
+                    content: bean.content,
+                    style: bean.style,
+                    pin: bean.pin,
+                    last_updated_date: bean.last_updated_date,
+                },
+            });
+            Object.assign(bean, updated);
 
             callback({
                 ok: true,
@@ -188,6 +228,7 @@ module.exports.statusPageSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
+            const prisma = getPrisma();
             let statusPageID = await StatusPage.slugToID(slug);
             if (!statusPageID) {
                 callback({
@@ -198,8 +239,8 @@ module.exports.statusPageSocketHandler = (socket) => {
                 return;
             }
 
-            let bean = await R.findOne("incident", " id = ? AND status_page_id = ? ", [incidentID, statusPageID]);
-            if (!bean) {
+            let row = await prisma.incident.findFirst({ where: { id: incidentID, status_page_id: statusPageID } });
+            if (!row) {
                 callback({
                     ok: false,
                     msg: "Incident not found or access denied",
@@ -208,7 +249,7 @@ module.exports.statusPageSocketHandler = (socket) => {
                 return;
             }
 
-            await R.trash(bean);
+            await prisma.incident.delete({ where: { id: row.id } });
 
             callback({
                 ok: true,
@@ -228,6 +269,7 @@ module.exports.statusPageSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
+            const prisma = getPrisma();
             let statusPageID = await StatusPage.slugToID(slug);
             if (!statusPageID) {
                 callback({
@@ -238,8 +280,8 @@ module.exports.statusPageSocketHandler = (socket) => {
                 return;
             }
 
-            let bean = await R.findOne("incident", " id = ? AND status_page_id = ? ", [incidentID, statusPageID]);
-            if (!bean) {
+            let row = await prisma.incident.findFirst({ where: { id: incidentID, status_page_id: statusPageID } });
+            if (!row) {
                 callback({
                     ok: false,
                     msg: "Incident not found or access denied",
@@ -248,6 +290,7 @@ module.exports.statusPageSocketHandler = (socket) => {
                 return;
             }
 
+            let bean = Object.assign(new Incident(), row);
             await bean.resolve();
 
             callback({
@@ -269,11 +312,14 @@ module.exports.statusPageSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
-            let statusPage = await R.findOne("status_page", " slug = ? ", [slug]);
+            const prisma = getPrisma();
+            let row = await prisma.statusPage.findFirst({ where: { slug } });
 
-            if (!statusPage) {
+            if (!row) {
                 throw new Error("No slug?");
             }
+
+            let statusPage = Object.assign(new StatusPage(), row);
 
             callback({
                 ok: true,
@@ -293,12 +339,16 @@ module.exports.statusPageSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
-            // Save Config
-            let statusPage = await R.findOne("status_page", " slug = ? ", [slug]);
+            const prisma = getPrisma();
 
-            if (!statusPage) {
+            // Save Config
+            let row = await prisma.statusPage.findFirst({ where: { slug } });
+
+            if (!row) {
                 throw new Error("No slug?");
             }
+
+            let statusPage = Object.assign(new StatusPage(), row);
 
             checkSlug(config.slug);
 
@@ -325,18 +375,16 @@ module.exports.statusPageSocketHandler = (socket) => {
             statusPage.title = config.title;
             statusPage.description = config.description;
             statusPage.icon = config.logo;
-            ((statusPage.autoRefreshInterval = config.autoRefreshInterval), (statusPage.theme = config.theme));
-            //statusPage.published = ;
-            //statusPage.search_engine_index = ;
+            statusPage.auto_refresh_interval = config.autoRefreshInterval;
+            statusPage.theme = config.theme;
             statusPage.show_tags = config.showTags;
-            //statusPage.password = null;
             statusPage.footer_text = config.footerText;
             statusPage.custom_css = config.customCSS;
             statusPage.show_powered_by = config.showPoweredBy;
             statusPage.rss_title = config.rssTitle;
             statusPage.show_only_last_heartbeat = config.showOnlyLastHeartbeat;
             statusPage.show_certificate_expiry = config.showCertificateExpiry;
-            statusPage.modified_date = R.isoDateTime();
+            statusPage.modified_date = new Date();
             statusPage.analytics_id = config.analyticsId;
             statusPage.analytics_script_url = config.analyticsScriptUrl;
             const validAnalyticsTypes = ["google", "umami", "plausible", "matomo"];
@@ -345,7 +393,29 @@ module.exports.statusPageSocketHandler = (socket) => {
             }
             statusPage.analytics_type = config.analyticsType;
 
-            await R.store(statusPage);
+            const updatedRow = await prisma.statusPage.update({
+                where: { id: statusPage.id },
+                data: {
+                    slug: statusPage.slug,
+                    title: statusPage.title,
+                    description: statusPage.description,
+                    icon: statusPage.icon,
+                    theme: statusPage.theme,
+                    auto_refresh_interval: statusPage.auto_refresh_interval,
+                    show_tags: statusPage.show_tags,
+                    footer_text: statusPage.footer_text,
+                    custom_css: statusPage.custom_css,
+                    show_powered_by: statusPage.show_powered_by,
+                    rss_title: statusPage.rss_title,
+                    show_only_last_heartbeat: statusPage.show_only_last_heartbeat,
+                    show_certificate_expiry: statusPage.show_certificate_expiry,
+                    modified_date: statusPage.modified_date,
+                    analytics_id: statusPage.analytics_id,
+                    analytics_script_url: statusPage.analytics_script_url,
+                    analytics_type: statusPage.analytics_type,
+                },
+            });
+            Object.assign(statusPage, updatedRow);
 
             await statusPage.updateDomainNameList(config.domainNameList);
             await StatusPage.loadDomainMappingList();
@@ -357,12 +427,13 @@ module.exports.statusPageSocketHandler = (socket) => {
             for (let group of publicGroupList) {
                 let groupBean;
                 if (group.id) {
-                    groupBean = await R.findOne("group", " id = ? AND public = 1 AND status_page_id = ? ", [
-                        group.id,
-                        statusPage.id,
-                    ]);
-                } else {
-                    groupBean = R.dispense("group");
+                    groupBean = await prisma.group.findFirst({
+                        where: { id: group.id, public: true, status_page_id: statusPage.id },
+                    });
+                }
+
+                if (!groupBean) {
+                    groupBean = {};
                 }
 
                 groupBean.status_page_id = statusPage.id;
@@ -370,27 +441,50 @@ module.exports.statusPageSocketHandler = (socket) => {
                 groupBean.public = true;
                 groupBean.weight = groupOrder++;
 
-                await R.store(groupBean);
+                if (groupBean.id) {
+                    await prisma.group.update({
+                        where: { id: groupBean.id },
+                        data: {
+                            status_page_id: groupBean.status_page_id,
+                            name: groupBean.name,
+                            public: groupBean.public,
+                            weight: groupBean.weight,
+                        },
+                    });
+                } else {
+                    const createdGroup = await prisma.group.create({
+                        data: {
+                            status_page_id: groupBean.status_page_id,
+                            name: groupBean.name,
+                            public: groupBean.public,
+                            weight: groupBean.weight,
+                        },
+                    });
+                    groupBean.id = createdGroup.id;
+                }
 
-                await R.exec("DELETE FROM monitor_group WHERE group_id = ? ", [groupBean.id]);
+                await prisma.$executeRaw`DELETE FROM monitor_group WHERE group_id = ${groupBean.id}`;
 
                 let monitorOrder = 1;
 
                 for (let monitor of group.monitorList) {
-                    let relationBean = R.dispense("monitor_group");
-                    relationBean.weight = monitorOrder++;
-                    relationBean.group_id = groupBean.id;
-                    relationBean.monitor_id = monitor.id;
+                    const relationData = {
+                        weight: monitorOrder++,
+                        group_id: groupBean.id,
+                        monitor_id: monitor.id,
+                        send_url: false,
+                        custom_url: null,
+                    };
 
                     if (monitor.sendUrl !== undefined) {
-                        relationBean.send_url = monitor.sendUrl;
+                        relationData.send_url = monitor.sendUrl;
                     }
 
                     if (monitor.url !== undefined) {
-                        relationBean.custom_url = monitor.url;
+                        relationData.custom_url = monitor.url;
                     }
 
-                    await R.store(relationBean);
+                    await prisma.monitorGroup.create({ data: relationData });
                 }
 
                 groupIDList.push(groupBean.id);
@@ -400,12 +494,14 @@ module.exports.statusPageSocketHandler = (socket) => {
             // Delete groups that are not in the list
             log.debug("socket", "Delete groups that are not in the list");
             if (groupIDList.length === 0) {
-                await R.exec("DELETE FROM `group` WHERE status_page_id = ?", [statusPage.id]);
+                await prisma.$executeRaw`DELETE FROM \`group\` WHERE status_page_id = ${statusPage.id}`;
             } else {
-                const slots = groupIDList.map(() => "?").join(",");
-
-                const data = [...groupIDList, statusPage.id];
-                await R.exec(`DELETE FROM \`group\` WHERE id NOT IN (${slots}) AND status_page_id = ?`, data);
+                await prisma.group.deleteMany({
+                    where: {
+                        id: { notIn: groupIDList },
+                        status_page_id: statusPage.id,
+                    },
+                });
             }
 
             const server = UptimeKumaServer.getInstance();
@@ -455,13 +551,16 @@ module.exports.statusPageSocketHandler = (socket) => {
 
             checkSlug(slug);
 
-            let statusPage = R.dispense("status_page");
-            statusPage.slug = slug;
-            statusPage.title = title;
-            statusPage.theme = "auto";
-            statusPage.icon = "";
-            statusPage.autoRefreshInterval = 300;
-            await R.store(statusPage);
+            const prisma = getPrisma();
+            await prisma.statusPage.create({
+                data: {
+                    slug,
+                    title,
+                    theme: "auto",
+                    icon: "",
+                    auto_refresh_interval: 300,
+                },
+            });
 
             callback({
                 ok: true,
@@ -497,14 +596,16 @@ module.exports.statusPageSocketHandler = (socket) => {
                 // No need to delete records from `status_page_cname`, because it has cascade foreign key.
                 // But for incident & group, it is hard to add cascade foreign key during migration, so they have to be deleted manually.
 
+                const prisma = getPrisma();
+
                 // Delete incident
-                await R.exec("DELETE FROM incident WHERE status_page_id = ? ", [statusPageID]);
+                await prisma.$executeRaw`DELETE FROM incident WHERE status_page_id = ${statusPageID}`;
 
                 // Delete group
-                await R.exec("DELETE FROM `group` WHERE status_page_id = ? ", [statusPageID]);
+                await prisma.$executeRaw`DELETE FROM \`group\` WHERE status_page_id = ${statusPageID}`;
 
                 // Delete status_page
-                await R.exec("DELETE FROM status_page WHERE id = ? ", [statusPageID]);
+                await prisma.$executeRaw`DELETE FROM status_page WHERE id = ${statusPageID}`;
 
                 apicache.clear();
             } else {

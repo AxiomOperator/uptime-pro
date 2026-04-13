@@ -1,4 +1,4 @@
-const { R } = require("redbean-node");
+const { getPrisma } = require("./prisma");
 
 class TwoFA {
     /**
@@ -7,7 +7,8 @@ class TwoFA {
      * @returns {Promise<void>}
      */
     static async disable2FA(userID) {
-        return await R.exec("UPDATE `user` SET twofa_status = 0 WHERE id = ? ", [userID]);
+        const prisma = getPrisma();
+        return await prisma.$executeRaw`UPDATE \`user\` SET twofa_status = 0 WHERE id = ${userID}`;
     }
 }
 

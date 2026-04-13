@@ -1,6 +1,6 @@
 const { checkLogin } = require("../util-server");
 const { log } = require("../../src/util");
-const { R } = require("redbean-node");
+const { getPrisma } = require("../prisma");
 const apicache = require("../modules/apicache");
 const { UptimeKumaServer } = require("../uptime-kuma-server");
 const Maintenance = require("../model/maintenance");
@@ -19,9 +19,31 @@ module.exports.maintenanceSocketHandler = (socket) => {
 
             log.debug("maintenance", maintenance);
 
-            let bean = await Maintenance.jsonToBean(R.dispense("maintenance"), maintenance);
+            const prisma = getPrisma();
+            let bean = await Maintenance.jsonToBean(new Maintenance(), maintenance);
             bean.user_id = socket.userID;
-            let maintenanceID = await R.store(bean);
+
+            const created = await prisma.maintenance.create({
+                data: {
+                    title: bean.title,
+                    description: bean.description,
+                    strategy: bean.strategy,
+                    interval_day: bean.interval_day ?? null,
+                    timezone: bean.timezone ?? null,
+                    active: bean.active !== undefined ? !!bean.active : true,
+                    user_id: bean.user_id,
+                    start_date: bean.start_date ? new Date(bean.start_date) : null,
+                    end_date: bean.end_date ? new Date(bean.end_date) : null,
+                    start_time: bean.start_time ?? null,
+                    end_time: bean.end_time ?? null,
+                    weekdays: bean.weekdays ?? "[]",
+                    days_of_month: bean.days_of_month ?? "[]",
+                    cron: bean.cron ?? null,
+                    duration: bean.duration ?? null,
+                },
+            });
+            bean.id = created.id;
+            let maintenanceID = created.id;
 
             server.maintenanceList[maintenanceID] = bean;
             await bean.run(true);
@@ -47,6 +69,7 @@ module.exports.maintenanceSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
+            const prisma = getPrisma();
             let bean = server.getMaintenance(maintenance.id);
 
             if (bean.user_id !== socket.userID) {
@@ -54,7 +77,25 @@ module.exports.maintenanceSocketHandler = (socket) => {
             }
 
             await Maintenance.jsonToBean(bean, maintenance);
-            await R.store(bean);
+            await prisma.maintenance.update({
+                where: { id: bean.id },
+                data: {
+                    title: bean.title,
+                    description: bean.description,
+                    strategy: bean.strategy,
+                    interval_day: bean.interval_day ?? null,
+                    timezone: bean.timezone ?? null,
+                    active: bean.active !== undefined ? !!bean.active : true,
+                    start_date: bean.start_date ? new Date(bean.start_date) : null,
+                    end_date: bean.end_date ? new Date(bean.end_date) : null,
+                    start_time: bean.start_time ?? null,
+                    end_time: bean.end_time ?? null,
+                    weekdays: bean.weekdays ?? "[]",
+                    days_of_month: bean.days_of_month ?? "[]",
+                    cron: bean.cron ?? null,
+                    duration: bean.duration ?? null,
+                },
+            });
             await bean.run(true);
             await server.sendMaintenanceList(socket);
 
@@ -78,16 +119,16 @@ module.exports.maintenanceSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
-            await R.exec("DELETE FROM monitor_maintenance WHERE maintenance_id = ?", [maintenanceID]);
+            const prisma = getPrisma();
+            await prisma.$executeRaw`DELETE FROM monitor_maintenance WHERE maintenance_id = ${maintenanceID}`;
 
             for await (const monitor of monitors) {
-                let bean = R.dispense("monitor_maintenance");
-
-                bean.import({
-                    monitor_id: monitor.id,
-                    maintenance_id: maintenanceID,
+                await prisma.monitorMaintenance.create({
+                    data: {
+                        monitor_id: monitor.id,
+                        maintenance_id: maintenanceID,
+                    },
                 });
-                await R.store(bean);
             }
 
             apicache.clear();
@@ -110,16 +151,16 @@ module.exports.maintenanceSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
-            await R.exec("DELETE FROM maintenance_status_page WHERE maintenance_id = ?", [maintenanceID]);
+            const prisma = getPrisma();
+            await prisma.$executeRaw`DELETE FROM maintenance_status_page WHERE maintenance_id = ${maintenanceID}`;
 
             for await (const statusPage of statusPages) {
-                let bean = R.dispense("maintenance_status_page");
-
-                bean.import({
-                    status_page_id: statusPage.id,
-                    maintenance_id: maintenanceID,
+                await prisma.maintenanceStatusPage.create({
+                    data: {
+                        status_page_id: statusPage.id,
+                        maintenance_id: maintenanceID,
+                    },
                 });
-                await R.store(bean);
             }
 
             apicache.clear();
@@ -143,7 +184,11 @@ module.exports.maintenanceSocketHandler = (socket) => {
 
             log.debug("maintenance", `Get Maintenance: ${maintenanceID} User ID: ${socket.userID}`);
 
-            let bean = await R.findOne("maintenance", " id = ? AND user_id = ? ", [maintenanceID, socket.userID]);
+            const prisma = getPrisma();
+            let row = await prisma.maintenance.findFirst({
+                where: { id: parseInt(maintenanceID), user_id: socket.userID },
+            });
+            let bean = Object.assign(new Maintenance(), row);
 
             callback({
                 ok: true,
@@ -179,10 +224,8 @@ module.exports.maintenanceSocketHandler = (socket) => {
 
             log.debug("maintenance", `Get Monitors for Maintenance: ${maintenanceID} User ID: ${socket.userID}`);
 
-            let monitors = await R.getAll(
-                "SELECT monitor.id FROM monitor_maintenance mm JOIN monitor ON mm.monitor_id = monitor.id WHERE mm.maintenance_id = ? ",
-                [maintenanceID]
-            );
+            const prisma = getPrisma();
+            let monitors = await prisma.$queryRaw`SELECT monitor.id FROM monitor_maintenance mm JOIN monitor ON mm.monitor_id = monitor.id WHERE mm.maintenance_id = ${maintenanceID}`;
 
             callback({
                 ok: true,
@@ -203,10 +246,8 @@ module.exports.maintenanceSocketHandler = (socket) => {
 
             log.debug("maintenance", `Get Status Pages for Maintenance: ${maintenanceID} User ID: ${socket.userID}`);
 
-            let statusPages = await R.getAll(
-                "SELECT status_page.id, status_page.title FROM maintenance_status_page msp JOIN status_page ON msp.status_page_id = status_page.id WHERE msp.maintenance_id = ? ",
-                [maintenanceID]
-            );
+            const prisma = getPrisma();
+            let statusPages = await prisma.$queryRaw`SELECT status_page.id, status_page.title FROM maintenance_status_page msp JOIN status_page ON msp.status_page_id = status_page.id WHERE msp.maintenance_id = ${maintenanceID}`;
 
             callback({
                 ok: true,
@@ -232,7 +273,8 @@ module.exports.maintenanceSocketHandler = (socket) => {
                 delete server.maintenanceList[maintenanceID];
             }
 
-            await R.exec("DELETE FROM maintenance WHERE id = ? AND user_id = ? ", [maintenanceID, socket.userID]);
+            const prisma = getPrisma();
+            await prisma.$executeRaw`DELETE FROM maintenance WHERE id = ${maintenanceID} AND user_id = ${socket.userID}`;
 
             apicache.clear();
 
@@ -264,7 +306,11 @@ module.exports.maintenanceSocketHandler = (socket) => {
             }
 
             maintenance.active = false;
-            await R.store(maintenance);
+            const prisma = getPrisma();
+            await prisma.maintenance.update({
+                where: { id: maintenance.id },
+                data: { active: false },
+            });
             maintenance.stop();
 
             apicache.clear();
@@ -297,7 +343,11 @@ module.exports.maintenanceSocketHandler = (socket) => {
             }
 
             maintenance.active = true;
-            await R.store(maintenance);
+            const prisma = getPrisma();
+            await prisma.maintenance.update({
+                where: { id: maintenance.id },
+                data: { active: true },
+            });
             await maintenance.run();
 
             apicache.clear();

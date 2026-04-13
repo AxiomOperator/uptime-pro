@@ -6,9 +6,10 @@ const {
     filterAndJoin,
     sendHttpError,
 } = require("../util-server");
-const { R } = require("redbean-node");
+const { getPrisma } = require("../prisma");
 const apicache = require("../modules/apicache");
 const Monitor = require("../model/monitor");
+const Heartbeat = require("../model/heartbeat");
 const dayjs = require("dayjs");
 const { UP, MAINTENANCE, DOWN, PENDING, flipStatus, log, badgeConstants } = require("../../src/util");
 const StatusPage = require("../model/status_page");
@@ -59,7 +60,8 @@ router.all("/api/push/:pushToken", async (request, response) => {
             throw new Error(`Invalid ping value. Must be between 0 and ${MAX_PING_MS} ms.`);
         }
 
-        let monitor = await R.findOne("monitor", " push_token = ? AND active = 1 ", [pushToken]);
+        const prisma = getPrisma();
+        let monitor = await prisma.monitor.findFirst({ where: { push_token: pushToken, active: true } });
 
         if (!monitor) {
             throw new Error("Monitor not found or not active.");
@@ -69,8 +71,8 @@ router.all("/api/push/:pushToken", async (request, response) => {
 
         let isFirstBeat = true;
 
-        let bean = R.dispense("heartbeat");
-        bean.time = R.isoDateTimeMillis(dayjs.utc());
+        let bean = new Heartbeat();
+        bean.time = dayjs.utc().toDate();
         bean.monitor_id = monitor.id;
         bean.ping = ping;
         bean.msg = msg;
@@ -91,7 +93,7 @@ router.all("/api/push/:pushToken", async (request, response) => {
         // Calculate uptime
         let uptimeCalculator = await UptimeCalculator.getUptimeCalculator(monitor.id);
         let endTimeDayjs = await uptimeCalculator.update(bean.status, parseFloat(bean.ping));
-        bean.end_time = R.isoDateTimeMillis(endTimeDayjs);
+        bean.end_time = endTimeDayjs.toDate();
 
         log.debug("router", `/api/push/ called at ${dayjs().format("YYYY-MM-DD HH:mm:ss.SSS")}`);
         log.debug("router", "PreviousStatus: " + previousHeartbeat?.status);
@@ -122,7 +124,21 @@ router.all("/api/push/:pushToken", async (request, response) => {
             }
         }
 
-        await R.store(bean);
+        const created = await prisma.heartbeat.create({
+            data: {
+                monitor_id: bean.monitor_id,
+                time: bean.time,
+                status: bean.status,
+                msg: bean.msg ?? null,
+                ping: bean.ping ?? null,
+                important: bean.important ?? false,
+                duration: bean.duration ?? 0,
+                down_count: bean.downCount ?? 0,
+                end_time: bean.end_time ?? null,
+                retries: bean.retries ?? 0,
+            },
+        });
+        bean.id = created.id;
 
         io.to(monitor.user_id).emit("heartbeat", bean.toJSON());
 
@@ -374,20 +390,19 @@ router.get("/api/badge/:id/avg-response/:duration?", cache("5 minutes"), async (
         const overrideValue = value && parseFloat(value);
 
         const sqlHourOffset = Database.sqlHourOffset();
+        const prisma = getPrisma();
 
-        const publicAvgPing = parseInt(
-            await R.getCell(
-                `
-            SELECT AVG(ping) FROM monitor_group, \`group\`, heartbeat
+        const rows = await prisma.$queryRawUnsafe(
+            `SELECT AVG(ping) as avg_ping FROM monitor_group, \`group\`, heartbeat
             WHERE monitor_group.group_id = \`group\`.id
             AND heartbeat.time > ${sqlHourOffset}
             AND heartbeat.ping IS NOT NULL
             AND public = 1
-            AND heartbeat.monitor_id = ?
-            `,
-                [-requestedDuration, requestedMonitorId]
-            )
+            AND heartbeat.monitor_id = ?`,
+            -requestedDuration,
+            requestedMonitorId
         );
+        const publicAvgPing = parseInt(rows[0]?.avg_ping ?? 0);
 
         const badgeValues = { style };
 
@@ -458,7 +473,8 @@ router.get("/api/badge/:id/cert-exp", cache("5 minutes"), async (request, respon
             badgeValues.message = "N/A";
             badgeValues.color = badgeConstants.naColor;
         } else {
-            const tlsInfoBean = await R.findOne("monitor_tls_info", "monitor_id = ?", [requestedMonitorId]);
+            const prisma = getPrisma();
+            const tlsInfoBean = await prisma.monitorTlsInfo.findFirst({ where: { monitor_id: requestedMonitorId } });
 
             if (!tlsInfoBean) {
                 // return a "No/Bad Cert" badge in naColor (grey), if no cert saved (does not save bad certs?)
@@ -624,16 +640,14 @@ function determineStatus(status, previousHeartbeat, maxretries, isUpsideDown, be
  * @returns {Promise<boolean>} true if the monitor is public, otherwise false
  */
 async function isMonitorPublic(monitorID) {
-    let publicMonitor = await R.getRow(
-        `
-            SELECT monitor_group.monitor_id FROM monitor_group, \`group\`
-            WHERE monitor_group.group_id = \`group\`.id
-            AND monitor_group.monitor_id = ?
-            AND public = 1
-        `,
-        [monitorID]
-    );
-    return !!publicMonitor;
+    const prisma = getPrisma();
+    const rows = await prisma.$queryRaw`
+        SELECT monitor_group.monitor_id FROM monitor_group, \`group\`
+        WHERE monitor_group.group_id = \`group\`.id
+        AND monitor_group.monitor_id = ${monitorID}
+        AND public = 1
+    `;
+    return rows.length > 0;
 }
 
 module.exports = router;
