@@ -43,8 +43,9 @@ const {
     encodeBase64,
     checkCertExpiryNotifications,
 } = require("../util-server");
-const { R } = require("redbean-node");
-const { BeanModel } = require("redbean-node/dist/bean-model");
+const { getPrisma } = require("../prisma");
+const { Prisma } = require("../generated/prisma");
+const Heartbeat = require("./heartbeat");
 const { Notification } = require("../notification");
 const { Proxy } = require("../proxy");
 const { demoMode } = require("../config");
@@ -73,7 +74,7 @@ const rootCertificates = rootCertificatesFingerprints();
  *      2 = PENDING
  *      3 = MAINTENANCE
  */
-class Monitor extends BeanModel {
+class Monitor {
     /**
      * Return an object that ready to parse to JSON for public Only show
      * necessary data to public
@@ -259,10 +260,8 @@ class Monitor extends BeanModel {
      * monitor
      */
     async getTags() {
-        return await R.getAll(
-            "SELECT mt.*, tag.name, tag.color FROM monitor_tag mt JOIN tag ON mt.tag_id = tag.id WHERE mt.monitor_id = ? ORDER BY tag.name",
-            [this.id]
-        );
+        const prisma = getPrisma();
+        return prisma.$queryRaw`SELECT mt.*, tag.name, tag.color FROM monitor_tag mt JOIN tag ON mt.tag_id = tag.id WHERE mt.monitor_id = ${this.id} ORDER BY tag.name`;
     }
 
     /**
@@ -272,7 +271,8 @@ class Monitor extends BeanModel {
      * monitor
      */
     async getCertExpiry(monitorID) {
-        let tlsInfoBean = await R.findOne("monitor_tls_info", "monitor_id = ?", [monitorID]);
+        const prisma = getPrisma();
+        let tlsInfoBean = await prisma.monitorTlsInfo.findFirst({ where: { monitor_id: monitorID } });
         let tlsInfo;
         if (tlsInfoBean) {
             tlsInfo = JSON.parse(tlsInfoBean?.info_json);
@@ -437,7 +437,9 @@ class Monitor extends BeanModel {
             let tlsInfo = undefined;
 
             if (!previousBeat || this.type === "push") {
-                previousBeat = await R.findOne("heartbeat", " monitor_id = ? ORDER BY time DESC", [this.id]);
+                const prisma = getPrisma();
+                const prevBeatRow = await prisma.heartbeat.findFirst({ where: { monitor_id: this.id }, orderBy: { time: "desc" } });
+                previousBeat = prevBeatRow ? Object.assign(new Heartbeat(), prevBeatRow) : null;
                 if (previousBeat) {
                     retries = previousBeat.retries;
                 }
@@ -445,11 +447,11 @@ class Monitor extends BeanModel {
 
             const isFirstBeat = !previousBeat;
 
-            let bean = R.dispense("heartbeat");
+            let bean = new Heartbeat();
             bean.monitor_id = this.id;
-            bean.time = R.isoDateTimeMillis(dayjs.utc());
+            bean.time = new Date();
             bean.status = DOWN;
-            bean.downCount = previousBeat?.downCount || 0;
+            bean.down_count = previousBeat?.down_count || 0;
 
             if (this.isUpsideDown()) {
                 bean.status = flipStatus(bean.status);
@@ -573,7 +575,8 @@ class Monitor extends BeanModel {
                     }
 
                     if (this.proxy_id) {
-                        const proxy = await R.load("proxy", this.proxy_id);
+                        const prisma = getPrisma();
+                        const proxy = await prisma.proxy.findUnique({ where: { id: this.proxy_id } });
 
                         if (proxy && proxy.active) {
                             const { httpAgent, httpsAgent } = Proxy.createAgents(proxy, {
@@ -830,18 +833,19 @@ class Monitor extends BeanModel {
                         }),
                     };
 
-                    const dockerHost = await R.load("docker_host", this.docker_host);
+                    const prisma = getPrisma();
+                    const dockerHost = await prisma.dockerHost.findUnique({ where: { id: this.docker_host } });
 
                     if (!dockerHost) {
                         throw new Error("Failed to load docker host config");
                     }
 
-                    if (dockerHost._dockerType === "socket") {
-                        options.socketPath = dockerHost._dockerDaemon;
-                    } else if (dockerHost._dockerType === "tcp") {
-                        options.baseURL = DockerHost.patchDockerURL(dockerHost._dockerDaemon);
+                    if (dockerHost.docker_type === "socket") {
+                        options.socketPath = dockerHost.docker_daemon;
+                    } else if (dockerHost.docker_type === "tcp") {
+                        options.baseURL = DockerHost.patchDockerURL(dockerHost.docker_daemon);
                         options.httpsAgent = new https.Agent(
-                            await DockerHost.getHttpsAgentOptions(dockerHost._dockerType, options.baseURL)
+                            await DockerHost.getHttpsAgentOptions(dockerHost.docker_type, options.baseURL)
                         );
                     }
 
@@ -1011,9 +1015,7 @@ class Monitor extends BeanModel {
                 }
 
                 // Reset down count
-                bean.downCount = 0;
-
-                // Clear Status Page Cache
+                bean.down_count = 0;
                 log.debug("monitor", `[${this.name}] apicache clear`);
                 apicache.clear();
 
@@ -1022,17 +1024,17 @@ class Monitor extends BeanModel {
                 bean.important = false;
 
                 if (bean.status === DOWN && this.resendInterval > 0) {
-                    ++bean.downCount;
-                    if (bean.downCount >= this.resendInterval) {
+                    ++bean.down_count;
+                    if (bean.down_count >= this.resendInterval) {
                         // Send notification again, because we are still DOWN
                         log.debug(
                             "monitor",
-                            `[${this.name}] sendNotification again: Down Count: ${bean.downCount} | Resend Interval: ${this.resendInterval}`
+                            `[${this.name}] sendNotification again: Down Count: ${bean.down_count} | Resend Interval: ${this.resendInterval}`
                         );
                         await Monitor.sendNotification(isFirstBeat, this, bean);
 
                         // Reset down count
-                        bean.downCount = 0;
+                        bean.down_count = 0;
                     }
                 }
             }
@@ -1080,14 +1082,14 @@ class Monitor extends BeanModel {
             } else {
                 log.warn(
                     "monitor",
-                    `Monitor #${this.id} '${this.name}': Failing: ${bean.msg} | Interval: ${beatInterval} seconds | Type: ${this.type} | Down Count: ${bean.downCount} | Resend Interval: ${this.resendInterval}`
+                    `Monitor #${this.id} '${this.name}': Failing: ${bean.msg} | Interval: ${beatInterval} seconds | Type: ${this.type} | Down Count: ${bean.down_count} | Resend Interval: ${this.resendInterval}`
                 );
             }
 
             // Calculate uptime
             let uptimeCalculator = await UptimeCalculator.getUptimeCalculator(this.id);
             let endTimeDayjs = await uptimeCalculator.update(bean.status, parseFloat(bean.ping));
-            bean.end_time = R.isoDateTimeMillis(endTimeDayjs);
+            bean.end_time = endTimeDayjs.toDate();
 
             // Send to frontend
             log.debug("monitor", `[${this.name}] Send to socket`);
@@ -1096,7 +1098,23 @@ class Monitor extends BeanModel {
 
             // Store to database
             log.debug("monitor", `[${this.name}] Store`);
-            await R.store(bean);
+            const prismaStore = getPrisma();
+            const savedBeat = await prismaStore.heartbeat.create({
+                data: {
+                    monitor_id: bean.monitor_id,
+                    time: bean.time,
+                    status: bean.status,
+                    msg: bean.msg ?? null,
+                    ping: bean.ping ?? null,
+                    important: bean.important ?? false,
+                    duration: bean.duration ?? 0,
+                    down_count: bean.down_count ?? 0,
+                    end_time: bean.end_time ?? null,
+                    retries: bean.retries ?? 0,
+                    response: bean.response ?? null,
+                },
+            });
+            bean.id = savedBeat.id;
 
             log.debug("monitor", `[${this.name}] prometheus.update`);
             const data24h = uptimeCalculator.get24Hour();
@@ -1150,7 +1168,7 @@ class Monitor extends BeanModel {
 
     /**
      * Save response body to a heartbeat if response saving is enabled.
-     * @param {import("redbean-node").Bean} bean Heartbeat bean to populate.
+     * @param {Heartbeat} bean Heartbeat bean to populate.
      * @param {unknown} data Response payload.
      * @returns {void}
      */
@@ -1290,15 +1308,13 @@ class Monitor extends BeanModel {
      * @returns {Promise<object>} Updated certificate
      */
     async updateTlsInfo(checkCertificateResult) {
-        let tlsInfoBean = await R.findOne("monitor_tls_info", "monitor_id = ?", [this.id]);
+        const prisma = getPrisma();
+        const existing = await prisma.monitorTlsInfo.findFirst({ where: { monitor_id: this.id } });
 
-        if (tlsInfoBean == null) {
-            tlsInfoBean = R.dispense("monitor_tls_info");
-            tlsInfoBean.monitor_id = this.id;
-        } else {
+        if (existing) {
             // Clear sent history if the cert changed.
             try {
-                let oldCertInfo = JSON.parse(tlsInfoBean.info_json);
+                let oldCertInfo = JSON.parse(existing.info_json);
 
                 let isValidObjects =
                     oldCertInfo && oldCertInfo.certInfo && checkCertificateResult && checkCertificateResult.certInfo;
@@ -1306,10 +1322,7 @@ class Monitor extends BeanModel {
                 if (isValidObjects) {
                     if (oldCertInfo.certInfo.fingerprint256 !== checkCertificateResult.certInfo.fingerprint256) {
                         log.debug("monitor", "Resetting sent_history");
-                        await R.exec(
-                            "DELETE FROM notification_sent_history WHERE type = 'certificate' AND monitor_id = ?",
-                            [this.id]
-                        );
+                        await prisma.$executeRaw`DELETE FROM notification_sent_history WHERE type = 'certificate' AND monitor_id = ${this.id}`;
                     } else {
                         log.debug("monitor", "No need to reset sent_history");
                         log.debug("monitor", oldCertInfo.certInfo.fingerprint256);
@@ -1319,10 +1332,19 @@ class Monitor extends BeanModel {
                     log.debug("monitor", "Not valid object");
                 }
             } catch (e) {}
-        }
 
-        tlsInfoBean.info_json = JSON.stringify(checkCertificateResult);
-        await R.store(tlsInfoBean);
+            await prisma.monitorTlsInfo.update({
+                where: { id: existing.id },
+                data: { info_json: JSON.stringify(checkCertificateResult) },
+            });
+        } else {
+            await prisma.monitorTlsInfo.create({
+                data: {
+                    monitor_id: this.id,
+                    info_json: JSON.stringify(checkCertificateResult),
+                },
+            });
+        }
 
         return checkCertificateResult;
     }
@@ -1384,7 +1406,8 @@ class Monitor extends BeanModel {
      * @returns {void}
      */
     static async sendCertInfo(io, monitorID, userID) {
-        let tlsInfo = await R.findOne("monitor_tls_info", "monitor_id = ?", [monitorID]);
+        const prisma = getPrisma();
+        let tlsInfo = await prisma.monitorTlsInfo.findFirst({ where: { monitor_id: monitorID } });
         if (tlsInfo != null) {
             io.to(userID).emit("certInfo", monitorID, tlsInfo.info_json);
         }
@@ -1398,7 +1421,8 @@ class Monitor extends BeanModel {
      * @returns {void}
      */
     static async sendDomainInfo(io, monitorID, userID) {
-        const monitor = await R.findOne("monitor", "id = ?", [monitorID]);
+        const prisma = getPrisma();
+        const monitor = await prisma.monitor.findFirst({ where: { id: monitorID } });
 
         try {
             const supportInfo = await DomainExpiry.checkSupport(monitor);
@@ -1518,10 +1542,9 @@ class Monitor extends BeanModel {
                 try {
                     // Filter by important = 1 to get the state transition heartbeat (e.g. UP→DOWN),
                     // not the most recent DOWN heartbeat which would be the last check before recovery.
-                    const lastDownHeartbeat = await R.getRow(
-                        "SELECT time FROM heartbeat WHERE monitor_id = ? AND status = ? AND important = 1 ORDER BY time DESC LIMIT 1",
-                        [monitor.id, DOWN]
-                    );
+                    const prismaNotif = getPrisma();
+                    const lastDownRows = await prismaNotif.$queryRaw`SELECT time FROM heartbeat WHERE monitor_id = ${monitor.id} AND status = ${DOWN} AND important = 1 ORDER BY time DESC LIMIT 1`;
+                    const lastDownHeartbeat = lastDownRows[0] ?? null;
 
                     if (lastDownHeartbeat && lastDownHeartbeat.time) {
                         heartbeatJSON["lastDownTime"] = lastDownHeartbeat.time;
@@ -1558,10 +1581,8 @@ class Monitor extends BeanModel {
      * @returns {Promise<LooseObject<any>[]>} List of notifications
      */
     static async getNotificationList(monitor) {
-        let notificationList = await R.getAll(
-            "SELECT notification.* FROM notification, monitor_notification WHERE monitor_id = ? AND monitor_notification.notification_id = notification.id ",
-            [monitor.id]
-        );
+        const prisma = getPrisma();
+        let notificationList = await prisma.$queryRaw`SELECT notification.* FROM notification, monitor_notification WHERE monitor_id = ${monitor.id} AND monitor_notification.notification_id = notification.id`;
         return notificationList;
     }
 
@@ -1576,10 +1597,9 @@ class Monitor extends BeanModel {
      * @returns {Promise<void>}
      */
     async sendCertNotificationByTargetDays(certCN, certType, daysRemaining, targetDays, notificationList) {
-        let row = await R.getRow(
-            "SELECT * FROM notification_sent_history WHERE type = ? AND monitor_id = ? AND days <= ?",
-            ["certificate", this.id, targetDays]
-        );
+        const prismaNotifHist = getPrisma();
+        const certRows = await prismaNotifHist.$queryRaw`SELECT * FROM notification_sent_history WHERE type = 'certificate' AND monitor_id = ${this.id} AND days <= ${targetDays}`;
+        const row = certRows[0] ?? null;
 
         // Sent already, no need to send again
         if (row) {
@@ -1605,11 +1625,9 @@ class Monitor extends BeanModel {
         }
 
         if (sent) {
-            await R.exec("INSERT INTO notification_sent_history (type, monitor_id, days) VALUES(?, ?, ?)", [
-                "certificate",
-                this.id,
-                targetDays,
-            ]);
+            await prismaNotifHist.notificationSentHistory.create({
+                data: { type: "certificate", monitor_id: this.id, days: targetDays },
+            });
         }
     }
 
@@ -1619,7 +1637,9 @@ class Monitor extends BeanModel {
      * @returns {Promise<LooseObject<any>>} Previous heartbeat
      */
     static async getPreviousHeartbeat(monitorID) {
-        return await R.findOne("heartbeat", " id = (select MAX(id) from heartbeat where monitor_id = ?)", [monitorID]);
+        const prisma = getPrisma();
+        const row = await prisma.heartbeat.findFirst({ where: { monitor_id: monitorID }, orderBy: { id: "desc" } });
+        return row ? Object.assign(new Heartbeat(), row) : null;
     }
 
     /**
@@ -1628,13 +1648,9 @@ class Monitor extends BeanModel {
      * @returns {Promise<boolean>} Is the monitor under maintenance
      */
     static async isUnderMaintenance(monitorID) {
-        const maintenanceIDList = await R.getCol(
-            `
-            SELECT maintenance_id FROM monitor_maintenance
-            WHERE monitor_id = ?
-        `,
-            [monitorID]
-        );
+        const prisma = getPrisma();
+        const maintRows = await prisma.$queryRaw`SELECT maintenance_id FROM monitor_maintenance WHERE monitor_id = ${monitorID}`;
+        const maintenanceIDList = maintRows.map(r => r.maintenance_id);
 
         for (const maintenanceID of maintenanceIDList) {
             const maintenance = await UptimeKumaServer.getInstance().getMaintenance(maintenanceID);
@@ -1809,13 +1825,16 @@ class Monitor extends BeanModel {
      * @returns {Promise<LooseObject<any>>} object
      */
     static async getMonitorNotification(monitorIDs) {
-        return await R.getAll(
-            `
+        if (monitorIDs.length === 0) {
+            return [];
+        }
+        const prisma = getPrisma();
+        return prisma.$queryRaw(
+            Prisma.sql`
             SELECT monitor_notification.monitor_id, monitor_notification.notification_id
             FROM monitor_notification
-            WHERE monitor_notification.monitor_id IN (${monitorIDs.map((_) => "?").join(",")})
-        `,
-            monitorIDs
+            WHERE monitor_notification.monitor_id IN (${Prisma.join(monitorIDs)})
+        `
         );
     }
 
@@ -1825,14 +1844,17 @@ class Monitor extends BeanModel {
      * @returns {Promise<LooseObject<any>>} object
      */
     static async getMonitorTag(monitorIDs) {
-        return await R.getAll(
-            `
+        if (monitorIDs.length === 0) {
+            return [];
+        }
+        const prisma = getPrisma();
+        return prisma.$queryRaw(
+            Prisma.sql`
             SELECT monitor_tag.monitor_id, monitor_tag.tag_id, monitor_tag.value, tag.name, tag.color
             FROM monitor_tag
             JOIN tag ON monitor_tag.tag_id = tag.id
-            WHERE monitor_tag.monitor_id IN (${monitorIDs.map((_) => "?").join(",")})
-        `,
-            monitorIDs
+            WHERE monitor_tag.monitor_id IN (${Prisma.join(monitorIDs)})
+        `
         );
     }
 
@@ -1924,15 +1946,14 @@ class Monitor extends BeanModel {
      * @returns {Promise<LooseObject<any>>} Parent
      */
     static async getParent(monitorID) {
-        return await R.getRow(
-            `
+        const prisma = getPrisma();
+        const rows = await prisma.$queryRaw`
             SELECT parent.* FROM monitor parent
-    		LEFT JOIN monitor child
-    			ON child.parent = parent.id
-            WHERE child.id = ?
-        `,
-            [monitorID]
-        );
+            LEFT JOIN monitor child
+                ON child.parent = parent.id
+            WHERE child.id = ${monitorID}
+        `;
+        return rows[0] ?? null;
     }
 
     /**
@@ -1941,13 +1962,8 @@ class Monitor extends BeanModel {
      * @returns {Promise<LooseObject<any>[]>} Children
      */
     static async getChildren(monitorID) {
-        return await R.getAll(
-            `
-            SELECT * FROM monitor
-            WHERE parent = ?
-        `,
-            [monitorID]
-        );
+        const prisma = getPrisma();
+        return prisma.monitor.findMany({ where: { parent: monitorID } });
     }
 
     /**
@@ -2000,7 +2016,8 @@ class Monitor extends BeanModel {
      * @returns {Promise<void>}
      */
     static async unlinkAllChildren(groupID) {
-        return await R.exec("UPDATE `monitor` SET parent = ? WHERE parent = ? ", [null, groupID]);
+        const prisma = getPrisma();
+        return prisma.monitor.updateMany({ where: { parent: groupID }, data: { parent: null } });
     }
 
     /**
@@ -2019,7 +2036,8 @@ class Monitor extends BeanModel {
         }
 
         // Delete from database
-        await R.exec("DELETE FROM monitor WHERE id = ? AND user_id = ? ", [monitorID, userID]);
+        const prisma = getPrisma();
+        await prisma.monitor.deleteMany({ where: { id: monitorID, user_id: userID } });
     }
 
     /**
@@ -2030,7 +2048,8 @@ class Monitor extends BeanModel {
      */
     static async deleteMonitorRecursively(monitorID, userID) {
         // Check if this monitor is a group
-        const monitor = await R.findOne("monitor", " id = ? AND user_id = ? ", [monitorID, userID]);
+        const prisma = getPrisma();
+        const monitor = await prisma.monitor.findFirst({ where: { id: monitorID, user_id: userID } });
 
         if (monitor && monitor.type === "group") {
             // Get all children and delete them recursively
