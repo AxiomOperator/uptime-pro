@@ -1,0 +1,435 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+//
+// Schema derived from Knex migrations in db/knex_migrations/ and db/old_migrations/
+// Do NOT use Prisma Migrate — the app uses Knex migrations exclusively.
+
+generator client {
+  provider   = "prisma-client-js"
+  output     = "../server/generated/prisma"
+  engineType = "binary"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id               Int     @id @default(autoincrement())
+  username         String  @unique
+  password         String?
+  active           Boolean @default(true)
+  timezone         String?
+  twofa_secret     String?
+  twofa_status     Boolean @default(false)
+  twofa_last_token String?
+
+  @@map("user")
+}
+
+model Monitor {
+  id                                       Int      @id @default(autoincrement())
+  name                                     String?
+  active                                   Boolean  @default(true)
+  user_id                                  Int?
+  interval                                 Int      @default(20)
+  url                                      String?
+  type                                     String?
+  weight                                   Int?     @default(2000)
+  hostname                                 String?
+  port                                     Int?
+  created_date                             DateTime @default(now())
+  keyword                                  String?
+  maxretries                               Int      @default(0)
+  ignore_tls                               Boolean  @default(false)
+  upside_down                              Boolean  @default(false)
+  maxredirects                             Int      @default(10)
+  accepted_statuscodes_json                String   @default("[\"200-299\"]")
+  dns_resolve_type                         String?
+  dns_resolve_server                       String?
+  dns_last_result                          String?
+  retry_interval                           Int      @default(0)
+  push_token                               String?
+  method                                   String   @default("GET")
+  body                                     String?
+  headers                                  String?
+  basic_auth_user                          String?
+  basic_auth_pass                          String?
+  docker_host                              Int?
+  docker_container                         String?
+  proxy_id                                 Int?
+  expiry_notification                      Boolean? @default(true)
+  mqtt_topic                               String?
+  mqtt_success_message                     String?
+  mqtt_username                            String?
+  mqtt_password                            String?
+  database_connection_string               String?
+  database_query                           String?
+  auth_method                              String?
+  auth_domain                              String?
+  auth_workstation                         String?
+  grpc_url                                 String?
+  grpc_protobuf                            String?
+  grpc_body                                String?
+  grpc_metadata                            String?
+  grpc_method                              String?
+  grpc_service_name                        String?
+  grpc_enable_tls                          Boolean  @default(false)
+  radius_username                          String?
+  radius_password                          String?
+  radius_calling_station_id               String?
+  radius_called_station_id                String?
+  radius_secret                            String?
+  resend_interval                          Int      @default(0)
+  packet_size                              Int      @default(56)
+  game                                     String?
+  http_body_encoding                       String?
+  description                              String?
+  tls_ca                                   String?
+  tls_cert                                 String?
+  tls_key                                  String?
+  parent                                   Int?
+  invert_keyword                           Boolean  @default(false)
+  json_path                                String?
+  expected_value                           String?
+  kafka_producer_topic                     String?
+  kafka_producer_brokers                   String?
+  kafka_producer_ssl                       Boolean  @default(false)
+  kafka_producer_allow_auto_topic_creation Boolean  @default(false)
+  kafka_producer_sasl_options              String?
+  kafka_producer_message                   String?
+  oauth_client_id                          String?
+  oauth_client_secret                      String?
+  oauth_token_url                          String?
+  oauth_scopes                             String?
+  oauth_auth_method                        String?
+  timeout                                  Float    @default(0)
+  gamedig_given_port_only                  Boolean  @default(true)
+  mqtt_check_type                          String   @default("keyword")
+  snmp_oid                                 String?
+  snmp_version                             String?
+  json_path_operator                       String?
+  conditions                               String   @default("[]")
+  cache_bust                               Boolean  @default(false)
+  rabbitmq_nodes                           String?
+  rabbitmq_username                        String?
+  rabbitmq_password                        String?
+  smtp_security                            String?
+  ws_ignore_sec_websocket_accept_header    Boolean  @default(false)
+  ws_subprotocol                           String   @default("")
+  ping_count                               Int      @default(1)
+  ping_numeric                             Boolean  @default(true)
+  ping_per_request_timeout                 Int      @default(2)
+  ip_family                                String?
+  manual_status                            Int?
+  oauth_audience                           String?
+  mqtt_websocket_path                      String?
+  domain_expiry_notification               Boolean? @default(false)
+  save_response                            Boolean  @default(false)
+  save_error_response                      Boolean  @default(true)
+  response_max_length                      Int      @default(1024)
+  system_service_name                      String?
+  subtype                                  String?
+  location                                 String?
+  protocol                                 String?
+  snmp_v3_username                         String?
+  expected_tls_alert                       String?
+  retry_only_on_status_code_failure        Boolean  @default(false)
+  screenshot_delay                         Int      @default(0)
+  remote_browser                           Int?
+
+  @@map("monitor")
+}
+
+model Heartbeat {
+  id         Int       @id @default(autoincrement())
+  important  Boolean   @default(false)
+  monitor_id Int
+  status     Int
+  msg        String?
+  time       DateTime
+  ping       BigInt?
+  duration   Int       @default(0)
+  down_count Int       @default(0)
+  end_time   DateTime?
+  retries    Int       @default(0)
+  response   String?
+
+  @@map("heartbeat")
+}
+
+model Notification {
+  id         Int     @id @default(autoincrement())
+  name       String?
+  active     Boolean @default(true)
+  user_id    Int?
+  is_default Boolean @default(false)
+  config     String?
+
+  @@map("notification")
+}
+
+model MonitorNotification {
+  id              Int @id @default(autoincrement())
+  monitor_id      Int
+  notification_id Int
+
+  @@map("monitor_notification")
+}
+
+model Tag {
+  id           Int      @id @default(autoincrement())
+  name         String
+  color        String
+  created_date DateTime @default(now())
+
+  @@map("tag")
+}
+
+model MonitorTag {
+  id         Int     @id @default(autoincrement())
+  monitor_id Int
+  tag_id     Int
+  value      String?
+
+  @@map("monitor_tag")
+}
+
+model Incident {
+  id                Int       @id @default(autoincrement())
+  title             String
+  content           String
+  style             String    @default("warning")
+  created_date      DateTime  @default(now())
+  last_updated_date DateTime?
+  pin               Boolean   @default(true)
+  active            Boolean   @default(true)
+  status_page_id    Int?
+
+  @@map("incident")
+}
+
+model Proxy {
+  id           Int      @id @default(autoincrement())
+  user_id      Int
+  protocol     String
+  host         String
+  port         Int
+  auth         Boolean
+  username     String?
+  password     String?
+  active       Boolean  @default(true)
+  isDefault    Boolean  @default(false) @map("default")
+  created_date DateTime @default(now())
+
+  @@map("proxy")
+}
+
+model DockerHost {
+  id            Int     @id @default(autoincrement())
+  user_id       Int
+  docker_daemon String?
+  docker_type   String?
+  name          String?
+
+  @@map("docker_host")
+}
+
+model RemoteBrowser {
+  id      Int    @id @default(autoincrement())
+  name    String
+  url     String
+  user_id Int?
+
+  @@map("remote_browser")
+}
+
+model StatusPage {
+  id                       Int      @id @default(autoincrement())
+  slug                     String   @unique
+  title                    String
+  description              String?
+  icon                     String
+  theme                    String
+  published                Boolean  @default(true)
+  search_engine_index      Boolean  @default(true)
+  show_tags                Boolean  @default(false)
+  password                 String?
+  created_date             DateTime @default(now())
+  modified_date            DateTime @default(now())
+  footer_text              String?
+  custom_css               String?
+  show_powered_by          Boolean  @default(true)
+  analytics_id             String?
+  analytics_script_url     String?
+  analytics_type           String?
+  show_certificate_expiry  Boolean  @default(false)
+  auto_refresh_interval    Int?     @default(300)
+  rss_title                String?
+  show_only_last_heartbeat Boolean  @default(false)
+
+  @@map("status_page")
+}
+
+model StatusPageCname {
+  id             Int    @id @default(autoincrement())
+  status_page_id Int?
+  domain         String @unique
+
+  @@map("status_page_cname")
+}
+
+model Group {
+  id             Int      @id @default(autoincrement())
+  name           String
+  created_date   DateTime @default(now())
+  public         Boolean  @default(false)
+  active         Boolean  @default(true)
+  weight         Int      @default(1000)
+  status_page_id Int?
+
+  @@map("group")
+}
+
+model MonitorGroup {
+  id         Int     @id @default(autoincrement())
+  monitor_id Int
+  group_id   Int
+  weight     Int     @default(1000)
+  send_url   Boolean @default(false)
+  custom_url String?
+
+  @@map("monitor_group")
+}
+
+model Maintenance {
+  id              Int       @id @default(autoincrement())
+  title           String
+  description     String
+  user_id         Int?
+  active          Boolean   @default(true)
+  strategy        String    @default("single")
+  start_date      DateTime?
+  end_date        DateTime?
+  start_time      String?
+  end_time        String?
+  weekdays        String?   @default("[]")
+  days_of_month   String?   @default("[]")
+  interval_day    Int?
+  cron            String?
+  timezone        String?
+  duration        Int?
+  last_start_date DateTime?
+
+  @@map("maintenance")
+}
+
+model MaintenanceStatusPage {
+  id             Int @id @default(autoincrement())
+  status_page_id Int
+  maintenance_id Int
+
+  @@map("maintenance_status_page")
+}
+
+model MonitorMaintenance {
+  id             Int @id @default(autoincrement())
+  monitor_id     Int
+  maintenance_id Int
+
+  @@map("monitor_maintenance")
+}
+
+model ApiKey {
+  id           Int       @id @default(autoincrement())
+  key          String
+  name         String
+  user_id      Int
+  created_date DateTime  @default(now())
+  active       Boolean   @default(true)
+  expires      DateTime?
+
+  @@map("api_key")
+}
+
+model StatMinutely {
+  id         Int     @id @default(autoincrement())
+  monitor_id Int
+  timestamp  Int
+  ping       Float
+  ping_min   Float   @default(0)
+  ping_max   Float   @default(0)
+  up         Int
+  down       Int
+  extras     String?
+
+  @@unique([monitor_id, timestamp])
+  @@map("stat_minutely")
+}
+
+model StatHourly {
+  id         Int     @id @default(autoincrement())
+  monitor_id Int
+  timestamp  Int
+  ping       Float
+  ping_min   Float   @default(0)
+  ping_max   Float   @default(0)
+  up         Int
+  down       Int
+  extras     String?
+
+  @@unique([monitor_id, timestamp])
+  @@map("stat_hourly")
+}
+
+model StatDaily {
+  id         Int     @id @default(autoincrement())
+  monitor_id Int
+  timestamp  Int
+  ping       Float
+  ping_min   Float   @default(0)
+  ping_max   Float   @default(0)
+  up         Int
+  down       Int
+  extras     String?
+
+  @@unique([monitor_id, timestamp])
+  @@map("stat_daily")
+}
+
+model Setting {
+  id    Int     @id @default(autoincrement())
+  key   String  @unique
+  value String?
+  type  String?
+
+  @@map("setting")
+}
+
+model MonitorTlsInfo {
+  id         Int     @id @default(autoincrement())
+  monitor_id Int
+  info_json  String?
+
+  @@map("monitor_tls_info")
+}
+
+model NotificationSentHistory {
+  id         Int    @id @default(autoincrement())
+  type       String
+  monitor_id Int
+  days       Int
+
+  @@unique([type, monitor_id, days])
+  @@map("notification_sent_history")
+}
+
+model DomainExpiry {
+  id                            Int       @id @default(autoincrement())
+  last_check                    DateTime?
+  domain                        String    @unique
+  expiry                        DateTime?
+  last_expiry_notification_sent Int?
+
+  @@map("domain_expiry")
+}
