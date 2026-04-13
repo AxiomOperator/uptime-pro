@@ -29,7 +29,7 @@ RUN mkdir ./data
 FROM $BASE_IMAGE AS release
 WORKDIR /app
 
-LABEL org.opencontainers.image.source="https://github.com/louislam/uptime-kuma"
+LABEL org.opencontainers.image.source="https://github.com/AxiomOperator/uptime-pro"
 
 ENV UPTIME_KUMA_IS_CONTAINER=1
 
@@ -114,5 +114,5 @@ RUN chmod +x /app/extra/upload-github-release-asset.sh
 
 # Dist only
 RUN cd /app && tar -zcvf $DIST dist
-RUN /app/extra/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=louislam repo=uptime-kuma tag=$VERSION filename=/app/$DIST
+RUN /app/extra/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=AxiomOperator repo=uptime-pro tag=$VERSION filename=/app/$DIST
 

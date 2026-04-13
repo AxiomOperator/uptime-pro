@@ -33,7 +33,7 @@ export function getRepoNames() {
         // Split by comma
         return process.env.RELEASE_REPO_NAMES.split(",").map((name) => name.trim());
     }
-    return ["louislam/uptime-kuma", "ghcr.io/louislam/uptime-kuma"];
+    return ["axiomoperator/uptime-pro", "ghcr.io/axiomoperator/uptime-pro"];
 }
 
 /**
@@ -208,7 +208,7 @@ export function uploadArtifacts(version, githubToken) {
         "--platform",
         "linux/amd64",
         "-t",
-        "louislam/uptime-kuma:upload-artifact",
+        "axiomoperator/uptime-pro:upload-artifact",
         "--build-arg",
         `VERSION=${version}`,
         "--build-arg",
@@ -314,8 +314,8 @@ export async function createReleasePR(version, previousVersion, dryRun, branchNa
 
     // Build the artifact link - use direct run link if available, otherwise link to workflow file
     const artifactLink = githubRunId
-        ? `https://github.com/louislam/uptime-kuma/actions/runs/${githubRunId}/workflow`
-        : `https://github.com/louislam/uptime-kuma/actions/workflows/beta-release.yml`;
+        ? `https://github.com/AxiomOperator/uptime-pro/actions/runs/${githubRunId}/workflow`
+        : `https://github.com/AxiomOperator/uptime-pro/actions/workflows/beta-release.yml`;
 
     const body = `## Release ${version}
 
