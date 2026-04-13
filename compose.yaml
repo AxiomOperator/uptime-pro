@@ -1,6 +1,10 @@
 services:
-  uptime-kuma:
-    image: louislam/uptime-kuma:2
+  uptime-pro:
+    build:
+      context: .
+      dockerfile: docker/dockerfile
+      target: release
+    image: uptime-pro:local
     restart: unless-stopped
     volumes:
       - ./data:/app/data
