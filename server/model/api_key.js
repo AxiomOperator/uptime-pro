@@ -1,8 +1,7 @@
-const { BeanModel } = require("redbean-node/dist/bean-model");
-const { R } = require("redbean-node");
+const { getPrisma } = require("../prisma");
 const dayjs = require("dayjs");
 
-class APIKey extends BeanModel {
+class APIKey {
     /**
      * Get the current status of this API key
      * @returns {string} active, inactive or expired
@@ -58,18 +57,17 @@ class APIKey extends BeanModel {
      * @returns {Promise<bean>} API key
      */
     static async save(key, userID) {
-        let bean;
-        bean = R.dispense("api_key");
-
-        bean.key = key.key;
-        bean.name = key.name;
-        bean.user_id = userID;
-        bean.active = key.active;
-        bean.expires = key.expires;
-
-        await R.store(bean);
-
-        return bean;
+        const prisma = getPrisma();
+        const row = await prisma.apiKey.create({
+            data: {
+                key: key.key,
+                name: key.name,
+                user_id: userID,
+                active: key.active,
+                expires: key.expires ? new Date(key.expires) : null,
+            },
+        });
+        return Object.assign(new APIKey(), row);
     }
 }
 

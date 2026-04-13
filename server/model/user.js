@@ -1,10 +1,9 @@
-const { BeanModel } = require("redbean-node/dist/bean-model");
+const { getPrisma } = require("../prisma");
 const passwordHash = require("../password-hash");
-const { R } = require("redbean-node");
 const jwt = require("jsonwebtoken");
 const { shake256, SHAKE256_LENGTH } = require("../util-server");
 
-class User extends BeanModel {
+class User {
     /**
      * Reset user password
      * Fix #1510, as in the context reset-password.js, there is no auto model mapping. Call this static function instead.
@@ -13,10 +12,11 @@ class User extends BeanModel {
      * @returns {Promise<void>}
      */
     static async resetPassword(userID, newPassword) {
-        await R.exec("UPDATE `user` SET password = ? WHERE id = ? ", [
-            await passwordHash.generate(newPassword),
-            userID,
-        ]);
+        const prisma = getPrisma();
+        await prisma.user.update({
+            where: { id: userID },
+            data: { password: await passwordHash.generate(newPassword) },
+        });
     }
 
     /**
@@ -25,10 +25,12 @@ class User extends BeanModel {
      * @returns {Promise<void>}
      */
     async resetPassword(newPassword) {
+        const prisma = getPrisma();
         const hashedPassword = await passwordHash.generate(newPassword);
-
-        await R.exec("UPDATE `user` SET password = ? WHERE id = ? ", [hashedPassword, this.id]);
-
+        await prisma.user.update({
+            where: { id: this.id },
+            data: { password: hashedPassword },
+        });
         this.password = hashedPassword;
     }
 
