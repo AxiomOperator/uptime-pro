@@ -13,21 +13,21 @@ class Splunk extends NotificationProvider {
     async send(notification, msg, monitorJSON = null, heartbeatJSON = null) {
         try {
             if (heartbeatJSON == null) {
-                const title = "Uptime Kuma Alert";
+                const title = "Uptime Pro Alert";
                 const monitor = {
                     type: "ping",
-                    url: "Uptime Kuma Test Button",
+                    url: "Uptime Pro Test Button",
                 };
                 return this.postNotification(notification, title, msg, monitor, "trigger");
             }
 
             if (heartbeatJSON.status === UP) {
-                const title = "Uptime Kuma Monitor ✅ Up";
+                const title = "Uptime Pro Monitor ✅ Up";
                 return this.postNotification(notification, title, heartbeatJSON.msg, monitorJSON, "recovery");
             }
 
             if (heartbeatJSON.status === DOWN) {
-                const title = "Uptime Kuma Monitor 🔴 Down";
+                const title = "Uptime Pro Monitor 🔴 Down";
                 return this.postNotification(notification, title, heartbeatJSON.msg, monitorJSON, "trigger");
             }
         } catch (error) {
@@ -88,15 +88,15 @@ class Splunk extends NotificationProvider {
             data: {
                 message_type: eventAction,
                 state_message: `[${title}] [${monitorUrl}] ${body}`,
-                entity_display_name: "Uptime Kuma Alert: " + monitorInfo.name,
+                entity_display_name: "Uptime Pro Alert: " + monitorInfo.name,
                 routing_key: notification.pagerdutyIntegrationKey,
-                entity_id: "Uptime Kuma/" + monitorInfo.id,
+                entity_id: "Uptime Pro/" + monitorInfo.id,
             },
         };
 
         const baseURL = await Settings.get("primaryBaseURL");
         if (baseURL && monitorInfo) {
-            options.client = "Uptime Kuma";
+            options.client = "Uptime Pro";
             options.client_url = baseURL + getMonitorRelativeURL(monitorInfo.id);
         }
 

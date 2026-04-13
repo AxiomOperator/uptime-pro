@@ -41,7 +41,7 @@ class Slack extends NotificationProvider {
                 type: "button",
                 text: {
                     type: "plain_text",
-                    text: "Visit Uptime Kuma",
+                    text: "Visit Uptime Pro",
                 },
                 value: "Uptime-Kuma",
                 url: baseURL + getMonitorRelativeURL(monitorJSON.id),
@@ -184,7 +184,7 @@ class Slack extends NotificationProvider {
             const groupPath =
                 includeGroupName && monitorJSON?.path?.length > 1 ? monitorJSON.path.slice(0, -1).join(" / ") : "";
 
-            const title = monitorJSON?.name || "Uptime Kuma Alert";
+            const title = monitorJSON?.name || "Uptime Pro Alert";
             let data = {
                 text: msg,
                 channel: notification.slackchannel,
