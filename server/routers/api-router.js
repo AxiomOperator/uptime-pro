@@ -29,7 +29,21 @@ let io = server.io;
  */
 async function apiRoutes(fastify, options) {
 
-    fastify.get("/api/entry-page", async (request, reply) => {
+    fastify.get("/api/entry-page", {
+        schema: {
+            tags: ["Public"],
+            summary: "Get entry page info",
+            response: {
+                200: {
+                    type: "object",
+                    properties: {
+                        type: { type: "string" },
+                        hosturl: { type: "string" }
+                    }
+                }
+            }
+        }
+    }, async (request, reply) => {
         allowDevAllOrigin(reply);
 
         let result = {};
@@ -51,6 +65,41 @@ async function apiRoutes(fastify, options) {
     fastify.route({
         method: ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
         url: "/api/push/:pushToken",
+        schema: {
+            tags: ["Monitors"],
+            summary: "Push monitor heartbeat",
+            params: {
+                type: "object",
+                properties: {
+                    pushToken: { type: "string" }
+                },
+                required: ["pushToken"]
+            },
+            querystring: {
+                type: "object",
+                properties: {
+                    status: { type: "string", enum: ["up", "down"] },
+                    msg: { type: "string" },
+                    ping: { type: "number" }
+                }
+            },
+            response: {
+                200: {
+                    type: "object",
+                    properties: {
+                        ok: { type: "boolean" },
+                        msg: { type: "string" }
+                    }
+                },
+                404: {
+                    type: "object",
+                    properties: {
+                        ok: { type: "boolean" },
+                        msg: { type: "string" }
+                    }
+                }
+            }
+        },
         handler: async (request, reply) => {
             try {
                 let pushToken = request.params.pushToken;
@@ -168,7 +217,31 @@ async function apiRoutes(fastify, options) {
         },
     });
 
-    fastify.get("/api/badge/:id/status", async (request, reply) => {
+    fastify.get("/api/badge/:id/status", {
+        schema: {
+            tags: ["Badges"],
+            summary: "Get status badge",
+            params: {
+                type: "object",
+                properties: {
+                    id: { type: "integer" }
+                },
+                required: ["id"]
+            },
+            querystring: {
+                type: "object",
+                properties: {
+                    label: { type: "string" },
+                    upColor: { type: "string" },
+                    downColor: { type: "string" },
+                    pendingColor: { type: "string" },
+                    maintenanceColor: { type: "string" },
+                    style: { type: "string" },
+                    value: { type: "string" }
+                }
+            }
+        }
+    }, async (request, reply) => {
         allowAllOrigin(reply);
 
         const {
@@ -241,7 +314,32 @@ async function apiRoutes(fastify, options) {
         }
     });
 
-    fastify.get("/api/badge/:id/uptime/:duration?", async (request, reply) => {
+    fastify.get("/api/badge/:id/uptime/:duration?", {
+        schema: {
+            tags: ["Badges"],
+            summary: "Get uptime badge",
+            params: {
+                type: "object",
+                properties: {
+                    id: { type: "integer" },
+                    duration: { type: "string" }
+                },
+                required: ["id"]
+            },
+            querystring: {
+                type: "object",
+                properties: {
+                    label: { type: "string" },
+                    upColor: { type: "string" },
+                    downColor: { type: "string" },
+                    pendingColor: { type: "string" },
+                    maintenanceColor: { type: "string" },
+                    style: { type: "string" },
+                    value: { type: "string" }
+                }
+            }
+        }
+    }, async (request, reply) => {
         allowAllOrigin(reply);
 
         const {
@@ -305,7 +403,32 @@ async function apiRoutes(fastify, options) {
         }
     });
 
-    fastify.get("/api/badge/:id/ping/:duration?", async (request, reply) => {
+    fastify.get("/api/badge/:id/ping/:duration?", {
+        schema: {
+            tags: ["Badges"],
+            summary: "Get ping badge",
+            params: {
+                type: "object",
+                properties: {
+                    id: { type: "integer" },
+                    duration: { type: "string" }
+                },
+                required: ["id"]
+            },
+            querystring: {
+                type: "object",
+                properties: {
+                    label: { type: "string" },
+                    upColor: { type: "string" },
+                    downColor: { type: "string" },
+                    pendingColor: { type: "string" },
+                    maintenanceColor: { type: "string" },
+                    style: { type: "string" },
+                    value: { type: "string" }
+                }
+            }
+        }
+    }, async (request, reply) => {
         allowAllOrigin(reply);
 
         const {
@@ -371,7 +494,32 @@ async function apiRoutes(fastify, options) {
         }
     });
 
-    fastify.get("/api/badge/:id/avg-response/:duration?", async (request, reply) => {
+    fastify.get("/api/badge/:id/avg-response/:duration?", {
+        schema: {
+            tags: ["Badges"],
+            summary: "Get average response badge",
+            params: {
+                type: "object",
+                properties: {
+                    id: { type: "integer" },
+                    duration: { type: "string" }
+                },
+                required: ["id"]
+            },
+            querystring: {
+                type: "object",
+                properties: {
+                    label: { type: "string" },
+                    upColor: { type: "string" },
+                    downColor: { type: "string" },
+                    pendingColor: { type: "string" },
+                    maintenanceColor: { type: "string" },
+                    style: { type: "string" },
+                    value: { type: "string" }
+                }
+            }
+        }
+    }, async (request, reply) => {
         allowAllOrigin(reply);
 
         const {
@@ -443,7 +591,31 @@ async function apiRoutes(fastify, options) {
         }
     });
 
-    fastify.get("/api/badge/:id/cert-exp", async (request, reply) => {
+    fastify.get("/api/badge/:id/cert-exp", {
+        schema: {
+            tags: ["Badges"],
+            summary: "Get certificate expiry badge",
+            params: {
+                type: "object",
+                properties: {
+                    id: { type: "integer" }
+                },
+                required: ["id"]
+            },
+            querystring: {
+                type: "object",
+                properties: {
+                    label: { type: "string" },
+                    upColor: { type: "string" },
+                    downColor: { type: "string" },
+                    pendingColor: { type: "string" },
+                    maintenanceColor: { type: "string" },
+                    style: { type: "string" },
+                    value: { type: "string" }
+                }
+            }
+        }
+    }, async (request, reply) => {
         allowAllOrigin(reply);
 
         const date = request.query.date;
@@ -527,7 +699,31 @@ async function apiRoutes(fastify, options) {
         }
     });
 
-    fastify.get("/api/badge/:id/response", async (request, reply) => {
+    fastify.get("/api/badge/:id/response", {
+        schema: {
+            tags: ["Badges"],
+            summary: "Get response time badge",
+            params: {
+                type: "object",
+                properties: {
+                    id: { type: "integer" }
+                },
+                required: ["id"]
+            },
+            querystring: {
+                type: "object",
+                properties: {
+                    label: { type: "string" },
+                    upColor: { type: "string" },
+                    downColor: { type: "string" },
+                    pendingColor: { type: "string" },
+                    maintenanceColor: { type: "string" },
+                    style: { type: "string" },
+                    value: { type: "string" }
+                }
+            }
+        }
+    }, async (request, reply) => {
         allowAllOrigin(reply);
 
         const {

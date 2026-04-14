@@ -17,13 +17,37 @@ const server = UptimeKumaServer.getInstance();
  */
 async function statusPageRoutes(fastify, options) {
 
-    fastify.get("/status/:slug", async (request, reply) => {
+    fastify.get("/status/:slug", {
+        schema: {
+            tags: ["Status Pages"],
+            summary: "Get status page",
+            params: {
+                type: "object",
+                properties: {
+                    slug: { type: "string" }
+                },
+                required: ["slug"]
+            }
+        }
+    }, async (request, reply) => {
         let slug = request.params.slug;
         slug = slug.toLowerCase();
         await StatusPage.handleStatusPageResponse(reply, server.indexHTML, slug);
     });
 
-    fastify.get("/status/:slug/rss", async (request, reply) => {
+    fastify.get("/status/:slug/rss", {
+        schema: {
+            tags: ["Status Pages"],
+            summary: "Get status page RSS feed",
+            params: {
+                type: "object",
+                properties: {
+                    slug: { type: "string" }
+                },
+                required: ["slug"]
+            }
+        }
+    }, async (request, reply) => {
         let slug = request.params.slug;
         slug = slug.toLowerCase();
         await StatusPage.handleStatusPageRSSResponse(reply, slug, request);
@@ -40,7 +64,19 @@ async function statusPageRoutes(fastify, options) {
     });
 
     // Status page config, incident, monitor list
-    fastify.get("/api/status-page/:slug", async (request, reply) => {
+    fastify.get("/api/status-page/:slug", {
+        schema: {
+            tags: ["Status Pages"],
+            summary: "Get status page config",
+            params: {
+                type: "object",
+                properties: {
+                    slug: { type: "string" }
+                },
+                required: ["slug"]
+            }
+        }
+    }, async (request, reply) => {
         allowDevAllOrigin(reply);
         let slug = request.params.slug;
         slug = slug.toLowerCase();

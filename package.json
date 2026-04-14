@@ -73,6 +73,8 @@
         "@fastify/cors": "^11.2.0",
         "@fastify/formbody": "^8.0.2",
         "@fastify/static": "^9.1.0",
+        "@fastify/swagger": "^9.7.0",
+        "@fastify/swagger-ui": "^5.2.5",
         "@grpc/grpc-js": "~1.8.22",
         "@louislam/ping": "~0.4.4-mod.1",
         "@louislam/sqlite3": "15.1.6",

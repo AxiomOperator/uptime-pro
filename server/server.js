@@ -245,6 +245,33 @@ let needSetup = false;
     await app.register(require("@fastify/formbody"));
     await app.register(require("@fastify/compress"));
 
+    await app.register(require("@fastify/swagger"), {
+        openapi: {
+            info: {
+                title: "Uptime Pro API",
+                description: "Uptime Pro monitoring API",
+                version: "2.0.0"
+            },
+            components: {
+                securitySchemes: {
+                    bearerAuth: {
+                        type: "http",
+                        scheme: "bearer"
+                    }
+                }
+            }
+        }
+    });
+
+    await app.register(require("@fastify/swagger-ui"), {
+        routePrefix: "/docs",
+        uiConfig: {
+            docExpansion: "list",
+            deepLinking: false
+        },
+        staticCSP: true
+    });
+
     log.debug("server", "Adding route");
 
     // ***************************
