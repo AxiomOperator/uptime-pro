@@ -173,7 +173,7 @@ Legend: 🔴 Blocking (must complete before next phase) | 🟡 Non-blocking (can
 
 ### 3.1 — Auth middleware
 
-- [ ] 🔴 Create `server/middleware/auth.js` exporting `async function bearerAuth(request, reply)` that:
+- [x] 🔴 Create `server/middleware/auth.js` exporting `async function bearerAuth(request, reply)` that:
   - Extracts `Authorization: Bearer <key>` header
   - Looks up key in `api_key` table via `verifyAPIKey` (from `server/auth.js`)
   - Attaches `request.userId` if valid
@@ -181,63 +181,63 @@ Legend: 🔴 Blocking (must complete before next phase) | 🟡 Non-blocking (can
 
 ### 3.2 — Monitors API (`server/routes/api/v1/monitors.js`)
 
-- [ ] 🟡 `GET /api/v1/monitors` — list all monitors (re-use Monitor model `getMonitorList` logic)
-- [ ] 🟡 `GET /api/v1/monitors/:id` — get single monitor
-- [ ] 🟡 `POST /api/v1/monitors` — create monitor (same logic as `add` socket event in server.js)
-- [ ] 🟡 `PUT /api/v1/monitors/:id` — edit monitor
-- [ ] 🟡 `DELETE /api/v1/monitors/:id` — delete monitor
-- [ ] 🟡 `POST /api/v1/monitors/:id/pause` — pause monitor
-- [ ] 🟡 `POST /api/v1/monitors/:id/resume` — resume monitor
-- [ ] 🟡 `GET /api/v1/monitors/:id/heartbeats` — paginated heartbeat history
-- [ ] 🟡 `GET /api/v1/monitors/:id/uptime/:period` — uptime percentage
+- [x] 🟡 `GET /api/v1/monitors` — list all monitors (re-use Monitor model `getMonitorList` logic)
+- [x] 🟡 `GET /api/v1/monitors/:id` — get single monitor
+- [x] 🟡 `POST /api/v1/monitors` — create monitor (same logic as `add` socket event in server.js)
+- [x] 🟡 `PUT /api/v1/monitors/:id` — edit monitor
+- [x] 🟡 `DELETE /api/v1/monitors/:id` — delete monitor
+- [x] 🟡 `POST /api/v1/monitors/:id/pause` — pause monitor
+- [x] 🟡 `POST /api/v1/monitors/:id/resume` — resume monitor
+- [x] 🟡 `GET /api/v1/monitors/:id/heartbeats` — paginated heartbeat history
+- [x] 🟡 `GET /api/v1/monitors/:id/uptime/:period` — uptime percentage
 
 ### 3.3 — Tags API (`server/routes/api/v1/tags.js`)
 
-- [ ] 🟡 `GET /api/v1/tags` — list tags
-- [ ] 🟡 `POST /api/v1/tags` — create tag
-- [ ] 🟡 `PUT /api/v1/tags/:id` — edit tag
-- [ ] 🟡 `DELETE /api/v1/tags/:id` — delete tag
+- [x] 🟡 `GET /api/v1/tags` — list tags
+- [x] 🟡 `POST /api/v1/tags` — create tag
+- [x] 🟡 `PUT /api/v1/tags/:id` — edit tag
+- [x] 🟡 `DELETE /api/v1/tags/:id` — delete tag
 
 ### 3.4 — Status Pages API (`server/routes/api/v1/status-pages.js`)
 
-- [ ] 🟡 `GET /api/v1/status-pages` — list status pages
-- [ ] 🟡 `GET /api/v1/status-pages/:slug` — get config
-- [ ] 🟡 `POST /api/v1/status-pages` — create
-- [ ] 🟡 `PUT /api/v1/status-pages/:slug` — update
-- [ ] 🟡 `DELETE /api/v1/status-pages/:slug` — delete
+- [x] 🟡 `GET /api/v1/status-pages` — list status pages
+- [x] 🟡 `GET /api/v1/status-pages/:slug` — get config
+- [x] 🟡 `POST /api/v1/status-pages` — create
+- [x] 🟡 `PUT /api/v1/status-pages/:slug` — update
+- [x] 🟡 `DELETE /api/v1/status-pages/:slug` — delete
 
 ### 3.5 — Notifications API (`server/routes/api/v1/notifications.js`)
 
-- [ ] 🟡 `GET /api/v1/notifications` — list
-- [ ] 🟡 `POST /api/v1/notifications` — add
-- [ ] 🟡 `DELETE /api/v1/notifications/:id` — delete
+- [x] 🟡 `GET /api/v1/notifications` — list
+- [x] 🟡 `POST /api/v1/notifications` — add
+- [x] 🟡 `DELETE /api/v1/notifications/:id` — delete
 
 ### 3.6 — Maintenance API (`server/routes/api/v1/maintenance.js`)
 
-- [ ] 🟡 `GET /api/v1/maintenance` — list
-- [ ] 🟡 `POST /api/v1/maintenance` — create
-- [ ] 🟡 `PUT /api/v1/maintenance/:id` — edit
-- [ ] 🟡 `DELETE /api/v1/maintenance/:id` — delete
-- [ ] 🟡 `POST /api/v1/maintenance/:id/pause` — pause
-- [ ] 🟡 `POST /api/v1/maintenance/:id/resume` — resume
+- [x] 🟡 `GET /api/v1/maintenance` — list
+- [x] 🟡 `POST /api/v1/maintenance` — create
+- [x] 🟡 `PUT /api/v1/maintenance/:id` — edit
+- [x] 🟡 `DELETE /api/v1/maintenance/:id` — delete
+- [x] 🟡 `POST /api/v1/maintenance/:id/pause` — pause
+- [x] 🟡 `POST /api/v1/maintenance/:id/resume` — resume
 
 ### 3.7 — Settings API (`server/routes/api/v1/settings.js`)
 
-- [ ] 🟡 `GET /api/v1/settings` — get current settings
-- [ ] 🟡 `PUT /api/v1/settings` — update settings
+- [x] 🟡 `GET /api/v1/settings` — get current settings
+- [x] 🟡 `PUT /api/v1/settings` — update settings
 
 ### 3.8 — Register v1 routes in `server/server.js`
 
-- [ ] 🔴 `app.register(require("./routes/api/v1/monitors"), { prefix: "/api/v1", preHandler: bearerAuth })`
-- [ ] 🔴 Same registration for tags, status-pages, notifications, maintenance, settings
+- [x] 🔴 `app.register(require("./routes/api/v1/monitors"), { prefix: "/api/v1", preHandler: bearerAuth })`
+- [x] 🔴 Same registration for tags, status-pages, notifications, maintenance, settings
 
 ### 3.9 — Phase 3 Validation Gate
 
-- [ ] 🔴 `GET /api/v1/monitors` with valid key → HTTP 200, monitor list JSON
-- [ ] 🔴 `GET /api/v1/monitors` without key → HTTP 401 `{ ok: false, msg: "Unauthorized" }`
-- [ ] 🔴 `GET /api/v1/monitors` with expired/invalid key → HTTP 401
-- [ ] 🟡 `POST /api/v1/monitors` creates a monitor and it appears in Socket.IO `getMonitorList`
-- [ ] 🟡 OpenAPI spec at `/docs/json` includes all `/api/v1/` routes
+- [x] 🔴 `GET /api/v1/monitors` with valid key → HTTP 200, monitor list JSON
+- [x] 🔴 `GET /api/v1/monitors` without key → HTTP 401 `{ ok: false, msg: "Unauthorized" }`
+- [x] 🔴 `GET /api/v1/monitors` with expired/invalid key → HTTP 401
+- [x] 🟡 `POST /api/v1/monitors` creates a monitor and it appears in Socket.IO `getMonitorList`
+- [x] 🟡 OpenAPI spec at `/docs/json` includes all `/api/v1/` routes
 
 ---
 
