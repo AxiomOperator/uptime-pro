@@ -1153,16 +1153,6 @@ function createGlobalpingClientMock() {
 }
 
 /**
- * Reusable mock factory for RedBean
- * @returns {object} Mocked RedBean
- */
-function createRedbeanMock() {
-    return {
-        exec: mock.fn(),
-    };
-}
-
-/**
  * Reusable mock factory for Globalping response
  * @param {object} data Response data
  * @returns {object} Mocked Globalping response

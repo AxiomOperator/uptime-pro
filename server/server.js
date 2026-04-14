@@ -537,13 +537,14 @@ let needSetup = false;
 
                 if (!user.twofa_status) {
                     let newSecret = genSecret();
+                    let encodedSecret = base32.encode(newSecret);
 
                     // Google authenticator doesn't like equal signs
                     // The fix is found at https://github.com/guyht/notp
                     // Related issue: https://github.com/louislam/uptime-kuma/issues/486
                     encodedSecret = encodedSecret.toString().replace(/=/g, "");
 
-                    let uri = `otpauth://totp/Uptime%20Kuma:${user.username}?secret=${encodedSecret}`;
+                    let uri = `otpauth://totp/Uptime%20Pro:${user.username}?secret=${encodedSecret}`;
 
                     await prisma.$executeRaw`UPDATE \`user\` SET twofa_secret = ${newSecret} WHERE id = ${socket.userID}`;
 
@@ -723,7 +724,7 @@ let needSetup = false;
         socket.on("add", async (monitor, callback) => {
             try {
                 checkLogin(socket);
-                let bean = new Monitor();
+                let monitorData = new Monitor();
 
                 let notificationIDList = monitor.notificationIDList;
                 delete monitor.notificationIDList;
@@ -757,33 +758,36 @@ let needSetup = false;
                     }
                 }
 
-                Object.assign(bean, monitor);
-                // Map camelCase frontend property to snake_case database column
+                Object.assign(monitorData, monitor);
+                // Map camelCase frontend property to Prisma schema field
                 if (monitor.retryOnlyOnStatusCodeFailure !== undefined) {
-                    bean.retry_only_on_status_code_failure = monitor.retryOnlyOnStatusCodeFailure;
+                    monitorData.retryOnlyOnStatusCodeFailure = monitor.retryOnlyOnStatusCodeFailure;
                 }
-                bean.user_id = socket.userID;
+                monitorData.userId = socket.userID;
 
-                bean.validate();
+                monitorData.validate();
 
-                const createdMonitor = await prisma.monitor.create({ data: { ...bean } });
-                bean.id = createdMonitor.id;
+                const prismaData = { ...monitorData };
+                delete prismaData._meta;
+                delete prismaData.id;
+                const createdMonitor = await prisma.monitor.create({ data: prismaData });
+                monitorData.id = createdMonitor.id;
 
-                await updateMonitorNotification(bean.id, notificationIDList);
+                await updateMonitorNotification(monitorData.id, notificationIDList);
 
-                await server.sendUpdateMonitorIntoList(socket, bean.id);
+                await server.sendUpdateMonitorIntoList(socket, monitorData.id);
 
                 if (monitor.active !== false) {
-                    await startMonitor(socket.userID, bean.id);
+                    await startMonitor(socket.userID, monitorData.id);
                 }
 
-                log.info("monitor", `Added Monitor: ${bean.id} User ID: ${socket.userID}`);
+                log.info("monitor", `Added Monitor: ${monitorData.id} User ID: ${socket.userID}`);
 
                 callback({
                     ok: true,
                     msg: "successAdded",
                     msgi18n: true,
-                    monitorID: bean.id,
+                    monitorID: monitorData.id,
                 });
             } catch (e) {
                 log.error("monitor", `Error adding Monitor: ${monitor.id} User ID: ${socket.userID}`);
@@ -801,10 +805,10 @@ let needSetup = false;
                 let removeGroupChildren = false;
                 checkLogin(socket);
 
-                let bean = await prisma.monitor.findFirst({ where: { id: monitor.id } });
-                bean = Object.assign(new Monitor(), bean);
+                let monitorData = await prisma.monitor.findFirst({ where: { id: monitor.id } });
+                monitorData = Object.assign(new Monitor(), monitorData);
 
-                if (bean.user_id !== socket.userID) {
+                if (monitorData.userId !== socket.userID) {
                     throw new Error("Permission denied.");
                 }
 
@@ -817,7 +821,7 @@ let needSetup = false;
                 }
 
                 // Remove children if monitor type has changed (from group to non-group)
-                if (bean.type === "group" && monitor.type !== bean.type) {
+                if (monitorData.type === "group" && monitor.type !== monitorData.type) {
                     removeGroupChildren = true;
                 }
 
@@ -826,140 +830,141 @@ let needSetup = false;
                     throw new Error("Accepted status codes are not all strings");
                 }
 
-                bean.name = monitor.name;
-                bean.description = monitor.description;
-                bean.parent = monitor.parent;
-                bean.type = monitor.type;
-                bean.subtype = monitor.subtype;
-                bean.url = monitor.url;
-                bean.wsIgnoreSecWebsocketAcceptHeader = monitor.wsIgnoreSecWebsocketAcceptHeader;
-                bean.wsSubprotocol = monitor.wsSubprotocol;
-                bean.method = monitor.method;
-                bean.body = monitor.body;
-                bean.ipFamily = monitor.ipFamily;
-                bean.headers = monitor.headers;
-                bean.basic_auth_user = monitor.basic_auth_user;
-                bean.basic_auth_pass = monitor.basic_auth_pass;
-                bean.timeout = monitor.timeout;
-                bean.oauth_client_id = monitor.oauth_client_id;
-                bean.oauth_client_secret = monitor.oauth_client_secret;
-                bean.oauth_auth_method = monitor.oauth_auth_method;
-                bean.oauth_token_url = monitor.oauth_token_url;
-                bean.oauth_scopes = monitor.oauth_scopes;
-                bean.oauth_audience = monitor.oauth_audience;
-                bean.tlsCa = monitor.tlsCa;
-                bean.tlsCert = monitor.tlsCert;
-                bean.tlsKey = monitor.tlsKey;
-                bean.interval = monitor.interval;
-                bean.retryInterval = monitor.retryInterval;
-                bean.resendInterval = monitor.resendInterval;
-                bean.hostname = monitor.hostname;
-                bean.game = monitor.game;
-                bean.maxretries = monitor.maxretries;
-                bean.port = parseInt(monitor.port);
-                bean.location = monitor.location;
-                bean.protocol = monitor.protocol;
+                monitorData.name = monitor.name;
+                monitorData.description = monitor.description;
+                monitorData.parent = monitor.parent;
+                monitorData.type = monitor.type;
+                monitorData.subtype = monitor.subtype;
+                monitorData.url = monitor.url;
+                monitorData.wsIgnoreSecWebsocketAcceptHeader = monitor.wsIgnoreSecWebsocketAcceptHeader;
+                monitorData.wsSubprotocol = monitor.wsSubprotocol;
+                monitorData.method = monitor.method;
+                monitorData.body = monitor.body;
+                monitorData.ipFamily = monitor.ipFamily;
+                monitorData.headers = monitor.headers;
+                monitorData.basicAuthUser = monitor.basic_auth_user;
+                monitorData.basicAuthPass = monitor.basic_auth_pass;
+                monitorData.timeout = monitor.timeout;
+                monitorData.oauthClientId = monitor.oauth_client_id;
+                monitorData.oauthClientSecret = monitor.oauth_client_secret;
+                monitorData.oauthAuthMethod = monitor.oauth_auth_method;
+                monitorData.oauthTokenUrl = monitor.oauth_token_url;
+                monitorData.oauthScopes = monitor.oauth_scopes;
+                monitorData.oauthAudience = monitor.oauth_audience;
+                monitorData.tlsCa = monitor.tlsCa;
+                monitorData.tlsCert = monitor.tlsCert;
+                monitorData.tlsKey = monitor.tlsKey;
+                monitorData.interval = monitor.interval;
+                monitorData.retryInterval = monitor.retryInterval;
+                monitorData.resendInterval = monitor.resendInterval;
+                monitorData.hostname = monitor.hostname;
+                monitorData.game = monitor.game;
+                monitorData.maxretries = monitor.maxretries;
+                monitorData.port = parseInt(monitor.port);
+                monitorData.location = monitor.location;
+                monitorData.protocol = monitor.protocol;
 
-                if (isNaN(bean.port)) {
-                    bean.port = null;
+                if (isNaN(monitorData.port)) {
+                    monitorData.port = null;
                 }
 
-                bean.keyword = monitor.keyword;
-                bean.invertKeyword = monitor.invertKeyword;
-                bean.ignoreTls = monitor.ignoreTls;
-                bean.expiryNotification = monitor.expiryNotification;
-                bean.domainExpiryNotification = monitor.domainExpiryNotification;
-                bean.upsideDown = monitor.upsideDown;
-                bean.packetSize = monitor.packetSize;
-                bean.maxredirects = monitor.maxredirects;
-                bean.accepted_statuscodes_json = JSON.stringify(monitor.accepted_statuscodes);
-                bean.save_response = monitor.saveResponse;
-                bean.save_error_response = monitor.saveErrorResponse;
-                bean.response_max_length = monitor.responseMaxLength;
-                bean.dns_resolve_type = monitor.dns_resolve_type;
-                bean.dns_resolve_server = monitor.dns_resolve_server;
-                bean.pushToken = monitor.pushToken;
-                bean.docker_container = monitor.docker_container;
-                bean.docker_host = monitor.docker_host;
-                bean.proxyId = Number.isInteger(monitor.proxyId) ? monitor.proxyId : null;
-                bean.mqttUsername = monitor.mqttUsername;
-                bean.mqttPassword = monitor.mqttPassword;
-                bean.mqttTopic = monitor.mqttTopic;
-                bean.mqttSuccessMessage = monitor.mqttSuccessMessage;
-                bean.mqttCheckType = monitor.mqttCheckType;
-                bean.mqttWebsocketPath = monitor.mqttWebsocketPath;
-                bean.databaseConnectionString = monitor.databaseConnectionString;
-                bean.databaseQuery = monitor.databaseQuery;
-                bean.authMethod = monitor.authMethod;
-                bean.authWorkstation = monitor.authWorkstation;
-                bean.authDomain = monitor.authDomain;
-                bean.grpcUrl = monitor.grpcUrl;
-                bean.grpcProtobuf = monitor.grpcProtobuf;
-                bean.grpcServiceName = monitor.grpcServiceName;
-                bean.grpcMethod = monitor.grpcMethod;
-                bean.grpcBody = monitor.grpcBody;
-                bean.grpcMetadata = monitor.grpcMetadata;
-                bean.grpcEnableTls = monitor.grpcEnableTls;
-                bean.radiusUsername = monitor.radiusUsername;
-                bean.radiusPassword = monitor.radiusPassword;
-                bean.radiusCalledStationId = monitor.radiusCalledStationId;
-                bean.radiusCallingStationId = monitor.radiusCallingStationId;
-                bean.radiusSecret = monitor.radiusSecret;
-                bean.httpBodyEncoding = monitor.httpBodyEncoding;
-                bean.expectedValue = monitor.expectedValue;
-                bean.jsonPath = monitor.jsonPath;
-                bean.kafkaProducerTopic = monitor.kafkaProducerTopic;
-                bean.kafkaProducerBrokers = JSON.stringify(monitor.kafkaProducerBrokers);
-                bean.kafkaProducerAllowAutoTopicCreation = monitor.kafkaProducerAllowAutoTopicCreation;
-                bean.kafkaProducerSaslOptions = JSON.stringify(monitor.kafkaProducerSaslOptions);
-                bean.kafkaProducerMessage = monitor.kafkaProducerMessage;
-                bean.cacheBust = monitor.cacheBust;
-                bean.kafkaProducerSsl = monitor.kafkaProducerSsl;
-                bean.kafkaProducerAllowAutoTopicCreation = monitor.kafkaProducerAllowAutoTopicCreation;
-                bean.gamedigGivenPortOnly = monitor.gamedigGivenPortOnly;
-                bean.remote_browser = monitor.remote_browser;
-                bean.smtpSecurity = monitor.smtpSecurity;
-                bean.snmpVersion = monitor.snmpVersion;
-                bean.snmpOid = monitor.snmpOid;
-                bean.jsonPathOperator = monitor.jsonPathOperator;
-                bean.retry_only_on_status_code_failure = Boolean(monitor.retryOnlyOnStatusCodeFailure);
-                bean.timeout = monitor.timeout;
-                bean.rabbitmqNodes = JSON.stringify(monitor.rabbitmqNodes);
-                bean.rabbitmqUsername = monitor.rabbitmqUsername;
-                bean.rabbitmqPassword = monitor.rabbitmqPassword;
-                bean.conditions = JSON.stringify(monitor.conditions);
-                bean.manual_status = monitor.manual_status;
-                bean.system_service_name = monitor.system_service_name;
-                bean.expected_tls_alert = monitor.expectedTlsAlert;
+                monitorData.keyword = monitor.keyword;
+                monitorData.invertKeyword = monitor.invertKeyword;
+                monitorData.ignoreTls = monitor.ignoreTls;
+                monitorData.expiryNotification = monitor.expiryNotification;
+                monitorData.domainExpiryNotification = monitor.domainExpiryNotification;
+                monitorData.upsideDown = monitor.upsideDown;
+                monitorData.packetSize = monitor.packetSize;
+                monitorData.maxredirects = monitor.maxredirects;
+                monitorData.acceptedStatuscodesJson = JSON.stringify(monitor.accepted_statuscodes);
+                monitorData.saveResponse = monitor.saveResponse;
+                monitorData.saveErrorResponse = monitor.saveErrorResponse;
+                monitorData.responseMaxLength = monitor.responseMaxLength;
+                monitorData.dnsResolveType = monitor.dns_resolve_type;
+                monitorData.dnsResolveServer = monitor.dns_resolve_server;
+                monitorData.pushToken = monitor.pushToken;
+                monitorData.dockerContainer = monitor.docker_container;
+                monitorData.dockerHost = monitor.docker_host;
+                monitorData.proxyId = Number.isInteger(monitor.proxyId) ? monitor.proxyId : null;
+                monitorData.mqttUsername = monitor.mqttUsername;
+                monitorData.mqttPassword = monitor.mqttPassword;
+                monitorData.mqttTopic = monitor.mqttTopic;
+                monitorData.mqttSuccessMessage = monitor.mqttSuccessMessage;
+                monitorData.mqttCheckType = monitor.mqttCheckType;
+                monitorData.mqttWebsocketPath = monitor.mqttWebsocketPath;
+                monitorData.databaseConnectionString = monitor.databaseConnectionString;
+                monitorData.databaseQuery = monitor.databaseQuery;
+                monitorData.authMethod = monitor.authMethod;
+                monitorData.authWorkstation = monitor.authWorkstation;
+                monitorData.authDomain = monitor.authDomain;
+                monitorData.grpcUrl = monitor.grpcUrl;
+                monitorData.grpcProtobuf = monitor.grpcProtobuf;
+                monitorData.grpcServiceName = monitor.grpcServiceName;
+                monitorData.grpcMethod = monitor.grpcMethod;
+                monitorData.grpcBody = monitor.grpcBody;
+                monitorData.grpcMetadata = monitor.grpcMetadata;
+                monitorData.grpcEnableTls = monitor.grpcEnableTls;
+                monitorData.radiusUsername = monitor.radiusUsername;
+                monitorData.radiusPassword = monitor.radiusPassword;
+                monitorData.radiusCalledStationId = monitor.radiusCalledStationId;
+                monitorData.radiusCallingStationId = monitor.radiusCallingStationId;
+                monitorData.radiusSecret = monitor.radiusSecret;
+                monitorData.httpBodyEncoding = monitor.httpBodyEncoding;
+                monitorData.expectedValue = monitor.expectedValue;
+                monitorData.jsonPath = monitor.jsonPath;
+                monitorData.kafkaProducerTopic = monitor.kafkaProducerTopic;
+                monitorData.kafkaProducerBrokers = JSON.stringify(monitor.kafkaProducerBrokers);
+                monitorData.kafkaProducerAllowAutoTopicCreation = monitor.kafkaProducerAllowAutoTopicCreation;
+                monitorData.kafkaProducerSaslOptions = JSON.stringify(monitor.kafkaProducerSaslOptions);
+                monitorData.kafkaProducerMessage = monitor.kafkaProducerMessage;
+                monitorData.cacheBust = monitor.cacheBust;
+                monitorData.kafkaProducerSsl = monitor.kafkaProducerSsl;
+                monitorData.kafkaProducerAllowAutoTopicCreation = monitor.kafkaProducerAllowAutoTopicCreation;
+                monitorData.gamedigGivenPortOnly = monitor.gamedigGivenPortOnly;
+                monitorData.remoteBrowser = monitor.remote_browser;
+                monitorData.smtpSecurity = monitor.smtpSecurity;
+                monitorData.snmpVersion = monitor.snmpVersion;
+                monitorData.snmpOid = monitor.snmpOid;
+                monitorData.jsonPathOperator = monitor.jsonPathOperator;
+                monitorData.retryOnlyOnStatusCodeFailure = Boolean(monitor.retryOnlyOnStatusCodeFailure);
+                monitorData.timeout = monitor.timeout;
+                monitorData.rabbitmqNodes = JSON.stringify(monitor.rabbitmqNodes);
+                monitorData.rabbitmqUsername = monitor.rabbitmqUsername;
+                monitorData.rabbitmqPassword = monitor.rabbitmqPassword;
+                monitorData.conditions = JSON.stringify(monitor.conditions);
+                monitorData.manualStatus = monitor.manual_status;
+                monitorData.systemServiceName = monitor.system_service_name;
+                monitorData.expectedTlsAlert = monitor.expectedTlsAlert;
 
                 // ping advanced options
-                bean.ping_numeric = monitor.ping_numeric;
-                bean.ping_count = monitor.ping_count;
-                bean.ping_per_request_timeout = monitor.ping_per_request_timeout;
+                monitorData.pingNumeric = monitor.ping_numeric;
+                monitorData.pingCount = monitor.ping_count;
+                monitorData.pingPerRequestTimeout = monitor.ping_per_request_timeout;
 
-                bean.validate();
+                monitorData.validate();
 
-                const beanUpdateData = { ...bean };
-                delete beanUpdateData.id;
-                await prisma.monitor.update({ where: { id: bean.id }, data: beanUpdateData });
+                const updateData = { ...monitorData };
+                delete updateData.id;
+                delete updateData._meta;
+                await prisma.monitor.update({ where: { id: monitorData.id }, data: updateData });
 
                 if (removeGroupChildren) {
                     await Monitor.unlinkAllChildren(monitor.id);
                 }
 
-                await updateMonitorNotification(bean.id, monitor.notificationIDList);
+                await updateMonitorNotification(monitorData.id, monitor.notificationIDList);
 
-                if (await Monitor.isActive(bean.id, bean.active)) {
-                    await restartMonitor(socket.userID, bean.id);
+                if (await Monitor.isActive(monitorData.id, monitorData.active)) {
+                    await restartMonitor(socket.userID, monitorData.id);
                 }
 
-                await server.sendUpdateMonitorIntoList(socket, bean.id);
+                await server.sendUpdateMonitorIntoList(socket, monitorData.id);
 
                 callback({
                     ok: true,
                     msg: "Saved.",
                     msgi18n: true,
-                    monitorID: bean.id,
+                    monitorID: monitorData.id,
                 });
             } catch (e) {
                 log.error("monitor", e);
@@ -992,7 +997,7 @@ let needSetup = false;
 
                 log.info("monitor", `Get Monitor: ${monitorID} User ID: ${socket.userID}`);
 
-                const monitorRow = await prisma.monitor.findFirst({ where: { id: monitorID, user_id: socket.userID } });
+                const monitorRow = await prisma.monitor.findFirst({ where: { id: monitorID, userId: socket.userID } });
                 let monitor = Object.assign(new Monitor(), monitorRow);
                 const monitorData = [{ id: monitor.id, active: monitor.active }];
                 const preloadData = await Monitor.preparePreloadData(monitorData);
@@ -1111,7 +1116,7 @@ let needSetup = false;
                 const startTime = Date.now();
 
                 // Check if this is a group monitor
-                const monitor = await prisma.monitor.findFirst({ where: { id: monitorID, user_id: socket.userID } });
+                const monitor = await prisma.monitor.findFirst({ where: { id: monitorID, userId: socket.userID } });
 
                 // Log with context about deletion type
                 if (monitor && monitor.type === "group") {
@@ -1196,7 +1201,7 @@ let needSetup = false;
 
                 callback({
                     ok: true,
-                    tags: list.map((bean) => ({ id: bean.id, name: bean.name, color: bean.color })),
+                    tags: list.map((record) => ({ id: record.id, name: record.name, color: record.color })),
                 });
             } catch (e) {
                 callback({
@@ -1228,8 +1233,8 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
-                let bean = await prisma.tag.findFirst({ where: { id: tag.id } });
-                if (bean == null) {
+                let tagRecord = await prisma.tag.findFirst({ where: { id: tag.id } });
+                if (tagRecord == null) {
                     callback({
                         ok: false,
                         msg: "tagNotFound",
@@ -1237,15 +1242,15 @@ let needSetup = false;
                     });
                     return;
                 }
-                bean.name = tag.name;
-                bean.color = tag.color;
-                await prisma.tag.update({ where: { id: bean.id }, data: { name: bean.name, color: bean.color } });
+                tagRecord.name = tag.name;
+                tagRecord.color = tag.color;
+                await prisma.tag.update({ where: { id: tagRecord.id }, data: { name: tagRecord.name, color: tagRecord.color } });
 
                 callback({
                     ok: true,
                     msg: "Saved.",
                     msgi18n: true,
-                    tag: { id: bean.id, name: bean.name, color: bean.color },
+                    tag: { id: tagRecord.id, name: tagRecord.name, color: tagRecord.color },
                 });
             } catch (e) {
                 callback({
@@ -1345,7 +1350,7 @@ let needSetup = false;
                 if (monitorID == null) {
                     count = await prisma.heartbeat.count({ where: { important: true } });
                 } else {
-                    count = await prisma.heartbeat.count({ where: { monitor_id: monitorID, important: true } });
+                    count = await prisma.heartbeat.count({ where: { monitorId: monitorID, important: true } });
                 }
 
                 callback({
@@ -1374,7 +1379,7 @@ let needSetup = false;
                     });
                 } else {
                     list = await prisma.heartbeat.findMany({
-                        where: { monitor_id: monitorID, important: true },
+                        where: { monitorId: monitorID, important: true },
                         orderBy: { time: "desc" },
                         take: count,
                         skip: offset,
@@ -1747,8 +1752,8 @@ async function updateMonitorNotification(monitorID, notificationIDList) {
         if (notificationIDList[notificationID]) {
             await prisma.monitorNotification.create({
                 data: {
-                    monitor_id: monitorID,
-                    notification_id: parseInt(notificationID),
+                    monitorId: monitorID,
+                    notificationId: parseInt(notificationID),
                 },
             });
         }
@@ -1763,7 +1768,7 @@ async function updateMonitorNotification(monitorID, notificationIDList) {
  * @throws {Error} The specified user does not own the monitor
  */
 async function checkOwner(userID, monitorID) {
-    let row = await prisma.monitor.findFirst({ where: { id: monitorID, user_id: userID } });
+    let row = await prisma.monitor.findFirst({ where: { id: monitorID, userId: userID } });
 
     if (!row) {
         throw new Error("You do not own this monitor.");
@@ -1828,11 +1833,11 @@ async function initDatabase(testMode = false) {
     // Initialize prisma after DB migrations are complete so it sees the fully-patched schema
     prisma = getPrisma();
 
-    let jwtSecretBean = await prisma.setting.findFirst({ where: { key: "jwtSecret" } });
+    let jwtSecretRecord = await prisma.setting.findFirst({ where: { key: "jwtSecret" } });
 
-    if (!jwtSecretBean) {
+    if (!jwtSecretRecord) {
         log.info("server", "JWT secret is not found, generate one.");
-        jwtSecretBean = await initJWTSecret();
+        jwtSecretRecord = await initJWTSecret();
         log.info("server", "Stored JWT secret into database");
     } else {
         log.debug("server", "Load JWT secret from database.");
@@ -1844,7 +1849,7 @@ async function initDatabase(testMode = false) {
         needSetup = true;
     }
 
-    server.jwtSecret = jwtSecretBean.value;
+    server.jwtSecret = jwtSecretRecord.value;
 }
 
 /**

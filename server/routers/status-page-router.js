@@ -2,6 +2,7 @@ let express = require("express");
 const apicache = require("../modules/apicache");
 const { UptimeKumaServer } = require("../uptime-kuma-server");
 const StatusPage = require("../model/status_page");
+const Heartbeat = require("../model/heartbeat");
 const { allowDevAllOrigin, sendHttpError } = require("../util-server");
 const { getPrisma } = require("../prisma");
 const { badgeConstants } = require("../../src/util");

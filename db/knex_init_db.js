@@ -1,15 +1,14 @@
-const { R } = require("redbean-node");
 const { log } = require("../src/util");
 
 /**
  * ⚠️⚠️⚠️⚠️⚠️⚠️ DO NOT ADD ANYTHING HERE!
  * IF YOU NEED TO ADD FIELDS, ADD IT TO ./db/knex_migrations
  * See ./db/knex_migrations/README.md for more information
+ * @param {import("knex").Knex} knex Knex instance
  * @returns {Promise<void>}
  */
-async function createTables() {
+async function createTables(knex) {
     log.info("mariadb", "Creating basic tables for MariaDB");
-    const knex = R.knex;
 
     // TODO: Should check later if it is really the final patch sql file.
 

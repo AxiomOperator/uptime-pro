@@ -436,7 +436,7 @@ class Database {
         let hasTable = await Database.knexInstance.schema.hasTable("docker_host");
         if (!hasTable) {
             const { createTables } = require("../db/knex_init_db");
-            await createTables();
+            await createTables(Database.knexInstance);
         } else {
             log.debug("db", "MariaDB database already exists");
         }

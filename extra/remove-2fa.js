@@ -1,8 +1,8 @@
-console.log("== Uptime Kuma Remove 2FA Tool ==");
+console.log("== Uptime Pro Remove 2FA Tool ==");
 console.log("Loading the database");
 
 const Database = require("../server/database");
-const { R } = require("redbean-node");
+const { getPrisma } = require("../server/prisma");
 const readline = require("readline");
 const TwoFA = require("../server/2fa");
 const args = require("args-parser")(process.argv);
@@ -18,7 +18,8 @@ const main = async () => {
     try {
         // No need to actually reset the password for testing, just make sure no connection problem. It is ok for now.
         if (!process.env.TEST_BACKEND) {
-            const user = await R.findOne("user");
+            const prisma = getPrisma();
+            const user = await prisma.user.findFirst();
             if (!user) {
                 throw new Error("user not found, have you installed?");
             }
