@@ -1,0 +1,185 @@
+Welcome to Uptime Pro
+Your Node.js version: 22.20.0
+[36m2026-04-13T14:24:46-05:00[0m [[32mSERVER[0m] [36mINFO:[0m Env: production
+[36m2026-04-13T14:24:47-05:00[0m [[32mSERVER[0m] [36mINFO:[0m Uptime Pro Version: 2.2.1
+[36m2026-04-13T14:24:47-05:00[0m [[32mSERVER[0m] [36mINFO:[0m Loading modules
+[36m2026-04-13T14:24:48-05:00[0m [[32mSERVER[0m] [36mINFO:[0m Creating express and socket.io instance
+[36m2026-04-13T14:24:48-05:00[0m [[32mSERVER[0m] [36mINFO:[0m Server Type: HTTP
+[36m2026-04-13T14:24:48-05:00[0m [[32mSERVER[0m] [36mINFO:[0m Data Dir: ./data/
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m Database Type: sqlite
+[36m2026-04-13T14:24:48-05:00[0m [[32mSERVER[0m] [36mINFO:[0m Copying Database
+[36m2026-04-13T14:24:48-05:00[0m [[32mSERVER[0m] [36mINFO:[0m Connected to the database
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m Your database version: 0
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m Latest database version: 10
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m Database patch is needed
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m Patching ./db/old_migrations/patch1.sql
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m Patched ./db/old_migrations/patch1.sql
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m Patching ./db/old_migrations/patch2.sql
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m Patched ./db/old_migrations/patch2.sql
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m Patching ./db/old_migrations/patch3.sql
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m Patched ./db/old_migrations/patch3.sql
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m Patching ./db/old_migrations/patch4.sql
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m Patched ./db/old_migrations/patch4.sql
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m Patching ./db/old_migrations/patch5.sql
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m Patched ./db/old_migrations/patch5.sql
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m Patching ./db/old_migrations/patch6.sql
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m Patched ./db/old_migrations/patch6.sql
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m Patching ./db/old_migrations/patch7.sql
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m Patched ./db/old_migrations/patch7.sql
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m Patching ./db/old_migrations/patch8.sql
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m Patched ./db/old_migrations/patch8.sql
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m Patching ./db/old_migrations/patch9.sql
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m Patched ./db/old_migrations/patch9.sql
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m Patching ./db/old_migrations/patch10.sql
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m Patched ./db/old_migrations/patch10.sql
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-setting-value-type.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-setting-value-type.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-setting-value-type.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-improve-performance.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-improve-performance.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-improve-performance.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-2fa.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-2fa.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-2fa.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-retry-interval-monitor.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-retry-interval-monitor.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-retry-interval-monitor.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-incident-table.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-incident-table.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-incident-table.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-group-table.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-group-table.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-group-table.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-monitor-push_token.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-monitor-push_token.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-monitor-push_token.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-http-monitor-method-body-and-headers.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-http-monitor-method-body-and-headers.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-http-monitor-method-body-and-headers.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-2fa-invalidate-used-token.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-2fa-invalidate-used-token.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-2fa-invalidate-used-token.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-notification_sent_history.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-notification_sent_history.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-notification_sent_history.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-monitor-basic-auth.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-monitor-basic-auth.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-monitor-basic-auth.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-docker-columns.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-docker-columns.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-docker-columns.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-status-page.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-status-page.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-status-page.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-proxy.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-proxy.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-proxy.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-monitor-expiry-notification.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-monitor-expiry-notification.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-monitor-expiry-notification.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-status-page-footer-css.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-status-page-footer-css.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-status-page-footer-css.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-added-mqtt-monitor.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-added-mqtt-monitor.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-added-mqtt-monitor.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-clickable-status-page-link.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-clickable-status-page-link.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-clickable-status-page-link.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-sqlserver-monitor.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-sqlserver-monitor.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-sqlserver-monitor.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-other-auth.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-other-auth.sql need parents
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-other-auth.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-other-auth.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-grpc-monitor.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-grpc-monitor.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-grpc-monitor.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-radius-monitor.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-radius-monitor.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-radius-monitor.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-monitor-add-resend-interval.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-monitor-add-resend-interval.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-monitor-add-resend-interval.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-ping-packet-size.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-ping-packet-size.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-ping-packet-size.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-maintenance-table2.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-maintenance-table2.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-maintenance-table2.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-gamedig-monitor.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-gamedig-monitor.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-gamedig-monitor.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-google-analytics-status-page-tag.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-google-analytics-status-page-tag.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-google-analytics-status-page-tag.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-http-body-encoding.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-http-body-encoding.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-http-body-encoding.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-description-monitor.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-description-monitor.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-description-monitor.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-api-key-table.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-api-key-table.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-api-key-table.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-monitor-tls.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-monitor-tls.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-monitor-tls.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-maintenance-cron.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-maintenance-cron.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-maintenance-cron.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-parent-monitor.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-parent-monitor.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-parent-monitor.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-invert-keyword.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-invert-keyword.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-invert-keyword.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-added-json-query.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-added-json-query.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-added-json-query.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-added-kafka-producer.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-added-kafka-producer.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-added-kafka-producer.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-certificate-expiry-status-page.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-certificate-expiry-status-page.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-certificate-expiry-status-page.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-monitor-oauth-cc.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-monitor-oauth-cc.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-monitor-oauth-cc.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-timeout-monitor.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-timeout-monitor.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-timeout-monitor.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-gamedig-given-port.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-gamedig-given-port.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-add-gamedig-given-port.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-notification-config.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-notification-config.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-notification-config.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-fix-kafka-producer-booleans.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-fix-kafka-producer-booleans.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-fix-kafka-producer-booleans.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-timeout.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-timeout.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-timeout.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-monitor-tls-info-add-fk.sql is not patched
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-monitor-tls-info-add-fk.sql is patching
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m patch-monitor-tls-info-add-fk.sql was patched successfully
+[36m2026-04-13T14:24:48-05:00[0m [[38;5;117mDB[0m] [36mINFO:[0m Database Patched Successfully
+[36m2026-04-13T14:24:49-05:00[0m [[38;5;117mDB[0m] [33mWARN:[0m SET_MIGRATE_AGGREGATE_TABLE_TO_TRUE is set to 1, skipping aggregate table migration forever (for 2.0.0-dev users)
+[36m2026-04-13T14:24:49-05:00[0m [[32mSERVER[0m] [31mERROR:[0m Failed to prepare your database: 
+Invalid `prisma.setting.findFirst()` invocation:
+
+
+The table `main.setting` does not exist in the current database.
+[36m2026-04-13T14:24:49-05:00[0m [[32mSERVER[0m] [31mERROR:[0m PrismaClientKnownRequestError: 
+Invalid `prisma.setting.findFirst()` invocation:
+
+
+The table `main.setting` does not exist in the current database.
+    at Gr.handleRequestError (/root/uptime-pro/server/generated/prisma/runtime/client.js:69:8286)
+    at Gr.handleAndLogRequestError (/root/uptime-pro/server/generated/prisma/runtime/client.js:69:7581)
+    at Gr.request (/root/uptime-pro/server/generated/prisma/runtime/client.js:69:7288)
+    at async a (/root/uptime-pro/server/generated/prisma/runtime/client.js:79:6730)
+    at async initDatabase (/root/uptime-pro/server/server.js:1832:25)
+    at async /root/uptime-pro/server/server.js:228:9
