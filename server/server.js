@@ -1023,7 +1023,7 @@ let needSetup = false;
 
                 log.info("monitor", `Get Monitor: ${monitorID} User ID: ${socket.userID}`);
 
-                const monitorRow = await prisma.monitor.findFirst({ where: { id: monitorID, userId: socket.userID } });
+                const monitorRow = await prisma.monitor.findFirst({ where: { id: parseInt(monitorID), userId: socket.userID } });
                 let monitor = Object.assign(new Monitor(), monitorRow);
                 const monitorData = [{ id: monitor.id, active: monitor.active }];
                 const preloadData = await Monitor.preparePreloadData(monitorData);
@@ -1142,7 +1142,7 @@ let needSetup = false;
                 const startTime = Date.now();
 
                 // Check if this is a group monitor
-                const monitor = await prisma.monitor.findFirst({ where: { id: monitorID, userId: socket.userID } });
+                const monitor = await prisma.monitor.findFirst({ where: { id: parseInt(monitorID), userId: socket.userID } });
 
                 // Log with context about deletion type
                 if (monitor && monitor.type === "group") {
@@ -1376,7 +1376,7 @@ let needSetup = false;
                 if (monitorID == null) {
                     count = await prisma.heartbeat.count({ where: { important: true } });
                 } else {
-                    count = await prisma.heartbeat.count({ where: { monitorId: monitorID, important: true } });
+                    count = await prisma.heartbeat.count({ where: { monitorId: parseInt(monitorID), important: true } });
                 }
 
                 callback({
@@ -1405,7 +1405,7 @@ let needSetup = false;
                     });
                 } else {
                     list = await prisma.heartbeat.findMany({
-                        where: { monitorId: monitorID, important: true },
+                        where: { monitorId: parseInt(monitorID), important: true },
                         orderBy: { time: "desc" },
                         take: count,
                         skip: offset,
@@ -1794,7 +1794,7 @@ async function updateMonitorNotification(monitorID, notificationIDList) {
  * @throws {Error} The specified user does not own the monitor
  */
 async function checkOwner(userID, monitorID) {
-    let row = await prisma.monitor.findFirst({ where: { id: monitorID, userId: userID } });
+    let row = await prisma.monitor.findFirst({ where: { id: parseInt(monitorID), userId: userID } });
 
     if (!row) {
         throw new Error("You do not own this monitor.");
@@ -1828,8 +1828,9 @@ async function afterLogin(socket, user) {
 
     const monitorPromises = [];
     for (let monitorID in monitorList) {
-        monitorPromises.push(sendHeartbeatList(socket, monitorID));
-        monitorPromises.push(Monitor.sendStats(io, monitorID, user.id));
+        const id = parseInt(monitorID);
+        monitorPromises.push(sendHeartbeatList(socket, id));
+        monitorPromises.push(Monitor.sendStats(io, id, user.id));
     }
 
     await Promise.all(monitorPromises);
@@ -1885,6 +1886,7 @@ async function initDatabase(testMode = false) {
  * @returns {Promise<void>}
  */
 async function startMonitor(userID, monitorID) {
+    monitorID = parseInt(monitorID);
     await checkOwner(userID, monitorID);
 
     log.info("manage", `Resume Monitor: ${monitorID} User ID: ${userID}`);
@@ -1919,6 +1921,7 @@ async function restartMonitor(userID, monitorID) {
  * @returns {Promise<void>}
  */
 async function pauseMonitor(userID, monitorID) {
+    monitorID = parseInt(monitorID);
     await checkOwner(userID, monitorID);
 
     log.info("manage", `Pause Monitor: ${monitorID} User ID: ${userID}`);

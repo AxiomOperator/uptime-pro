@@ -122,7 +122,7 @@ class UptimeCalculator {
      * @returns {Promise<void>}
      */
     async init(monitorID) {
-        this.monitorID = monitorID;
+        this.monitorID = parseInt(monitorID);
 
         let now = this.getCurrentDate();
 

@@ -86,7 +86,7 @@ async function sendImportantHeartbeatList(socket, monitorID, toUser = false, ove
     const prisma = getPrisma();
 
     let rows = await prisma.heartbeat.findMany({
-        where: { monitorId: monitorID, important: true },
+        where: { monitorId: parseInt(monitorID), important: true },
         orderBy: { time: "desc" },
         take: 500,
     });

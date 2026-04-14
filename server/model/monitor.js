@@ -272,7 +272,7 @@ class Monitor {
      */
     async getCertExpiry(monitorID) {
         const prisma = getPrisma();
-        let tlsInfoRecord = await prisma.monitorTlsInfo.findFirst({ where: { monitorId: monitorID } });
+        let tlsInfoRecord = await prisma.monitorTlsInfo.findFirst({ where: { monitorId: parseInt(monitorID) } });
         let tlsInfo;
         if (tlsInfoRecord) {
             tlsInfo = JSON.parse(tlsInfoRecord?.infoJson);
@@ -1407,7 +1407,7 @@ class Monitor {
      */
     static async sendCertInfo(io, monitorID, userID) {
         const prisma = getPrisma();
-        let tlsInfo = await prisma.monitorTlsInfo.findFirst({ where: { monitorId: monitorID } });
+        let tlsInfo = await prisma.monitorTlsInfo.findFirst({ where: { monitorId: parseInt(monitorID) } });
         if (tlsInfo != null) {
             io.to(userID).emit("certInfo", monitorID, tlsInfo.infoJson);
         }
@@ -1422,7 +1422,7 @@ class Monitor {
      */
     static async sendDomainInfo(io, monitorID, userID) {
         const prisma = getPrisma();
-        const monitor = await prisma.monitor.findFirst({ where: { id: monitorID } });
+        const monitor = await prisma.monitor.findFirst({ where: { id: parseInt(monitorID) } });
 
         try {
             const supportInfo = await DomainExpiry.checkSupport(monitor);
@@ -1638,7 +1638,7 @@ class Monitor {
      */
     static async getPreviousHeartbeat(monitorID) {
         const prisma = getPrisma();
-        const row = await prisma.heartbeat.findFirst({ where: { monitorId: monitorID }, orderBy: { id: "desc" } });
+        const row = await prisma.heartbeat.findFirst({ where: { monitorId: parseInt(monitorID) }, orderBy: { id: "desc" } });
         return row ? Object.assign(new Heartbeat(), row) : null;
     }
 
