@@ -758,11 +758,37 @@ let needSetup = false;
                     }
                 }
 
-                Object.assign(monitorData, monitor);
-                // Map camelCase frontend property to Prisma schema field
-                if (monitor.retryOnlyOnStatusCodeFailure !== undefined) {
-                    monitorData.retryOnlyOnStatusCodeFailure = monitor.retryOnlyOnStatusCodeFailure;
+                // Map snake_case frontend fields to camelCase Prisma fields
+                const snakeToCamelMap = {
+                    accepted_statuscodes_json: "acceptedStatuscodesJson",
+                    dns_resolve_type: "dnsResolveType",
+                    dns_resolve_server: "dnsResolveServer",
+                    docker_container: "dockerContainer",
+                    docker_host: "dockerHost",
+                    basic_auth_user: "basicAuthUser",
+                    basic_auth_pass: "basicAuthPass",
+                    oauth_client_id: "oauthClientId",
+                    oauth_client_secret: "oauthClientSecret",
+                    oauth_auth_method: "oauthAuthMethod",
+                    oauth_token_url: "oauthTokenUrl",
+                    oauth_scopes: "oauthScopes",
+                    oauth_audience: "oauthAudience",
+                    remote_browser: "remoteBrowser",
+                    manual_status: "manualStatus",
+                    system_service_name: "systemServiceName",
+                    ping_numeric: "pingNumeric",
+                    ping_count: "pingCount",
+                    ping_per_request_timeout: "pingPerRequestTimeout",
+                    screenshot_delay: "screenshotDelay",
+                };
+                for (const [ snakeKey, camelKey ] of Object.entries(snakeToCamelMap)) {
+                    if (snakeKey in monitor) {
+                        monitor[camelKey] = monitor[snakeKey];
+                        delete monitor[snakeKey];
+                    }
                 }
+
+                Object.assign(monitorData, monitor);
                 monitorData.userId = socket.userID;
 
                 monitorData.validate();
