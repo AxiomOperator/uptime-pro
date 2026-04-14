@@ -1,5 +1,4 @@
-const express = require("express");
-const bodyParser = require("body-parser");
+const http = require("http");
 
 /**
  * @param {number} port Port number
@@ -9,19 +8,35 @@ const bodyParser = require("body-parser");
  */
 async function mockWebhook(port, url, timeout = 2500) {
     return new Promise((resolve, reject) => {
-        const app = express();
+        const server = http.createServer((req, res) => {
+            if (req.method === "POST" && req.url === `/${url}`) {
+                let body = "";
+                req.on("data", (chunk) => {
+                    body += chunk;
+                });
+                req.on("end", () => {
+                    res.writeHead(200);
+                    res.end("OK");
+                    server.close();
+                    clearTimeout(tmo);
+                    try {
+                        resolve(JSON.parse(body));
+                    } catch (e) {
+                        resolve(body);
+                    }
+                });
+            } else {
+                res.writeHead(404);
+                res.end();
+            }
+        });
+
         const tmo = setTimeout(() => {
             server.close();
             reject({ reason: "Timeout" });
         }, timeout);
-        app.use(bodyParser.json()); // Middleware to parse JSON bodies
-        app.post(`/${url}`, (req, res) => {
-            res.status(200).send("OK");
-            server.close();
-            tmo && clearTimeout(tmo);
-            resolve(req.body);
-        });
-        const server = app.listen(port);
+
+        server.listen(port);
     });
 }
 

@@ -1,5 +1,3 @@
-const express = require("express");
-const http = require("node:http");
 const { printServerUrls } = require("../util-server");
 
 /**
@@ -9,20 +7,14 @@ const { printServerUrls } = require("../util-server");
  */
 class SimpleMigrationServer {
     /**
-     * Express app instance
-     * @type {?Express}
+     * Fastify app instance
+     * @type {?object}
      */
     app;
 
     /**
-     * Server instance
-     * @type {?Server}
-     */
-    server;
-
-    /**
-     * Response object
-     * @type {?Response}
+     * Response object (raw Node.js response)
+     * @type {?object}
      */
     response;
 
@@ -33,14 +25,13 @@ class SimpleMigrationServer {
      * @returns {Promise<void>}
      */
     start(port, hostname) {
-        this.app = express();
-        this.server = http.createServer(this.app);
+        this.app = require("fastify")({ logger: false });
 
-        this.app.get("/", (req, res) => {
-            res.set("Content-Type", "text/html");
+        this.app.get("/", (request, reply) => {
+            reply.header("Content-Type", "text/html");
 
             // Don't use meta tag redirect, it may cause issues in Chrome (#6223)
-            res.end(`
+            reply.send(`
                 <html lang="en">
                 <head><title>Uptime Pro Migration</title></head>
                 <body>
@@ -51,19 +42,19 @@ class SimpleMigrationServer {
             `);
         });
 
-        this.app.get("/migrate-status", (req, res) => {
-            res.set("Content-Type", "text/plain");
-            res.write("Migration is in progress, listening message...\n");
+        this.app.get("/migrate-status", (request, reply) => {
+            reply.raw.setHeader("Content-Type", "text/plain");
+            reply.raw.write("Migration is in progress, listening message...\n");
             if (this.response) {
                 this.response.write("Disconnected\n");
                 this.response.end();
             }
-            this.response = res;
-            // never ending response
+            this.response = reply.raw;
+            // never ending response - don't call reply.send()
         });
 
         return new Promise((resolve) => {
-            this.server.listen(port, hostname, () => {
+            this.app.listen({ port, host: hostname || "0.0.0.0" }).then(() => {
                 printServerUrls("migration", port, hostname);
                 resolve();
             });
@@ -86,7 +77,7 @@ class SimpleMigrationServer {
     async stop() {
         this.response?.write("Finished, please refresh this page.\n");
         this.response?.end();
-        await this.server?.close();
+        await this.app?.close();
     }
 }
 

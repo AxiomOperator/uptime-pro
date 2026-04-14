@@ -54,6 +54,7 @@ if (!semver.satisfies(nodeVersion, requiredNodeVersions)) {
 const args = require("args-parser")(process.argv);
 const { sleep, log, getRandomInt, genSecret, isDev } = require("../src/util");
 const config = require("./config");
+const path = require("path");
 
 process.title = "uptime-kuma";
 
@@ -80,9 +81,6 @@ log.info("server", "Uptime Pro Version:", checkVersion.version);
 
 log.info("server", "Loading modules");
 
-log.debug("server", "Importing express");
-const express = require("express");
-const expressStaticGzip = require("express-static-gzip");
 const { getPrisma } = require("./prisma");
 // NOTE: Do not call getPrisma() at module level — it creates a Prisma connection before
 // the DB migrations run. Use getPrisma() inside functions instead.
@@ -92,8 +90,7 @@ log.debug("server", "Importing jsonwebtoken");
 const jwt = require("jsonwebtoken");
 log.debug("server", "Importing http-graceful-shutdown");
 const gracefulShutdown = require("http-graceful-shutdown");
-log.debug("server", "Importing prometheus-api-metrics");
-const prometheusAPIMetrics = require("prometheus-api-metrics");
+const client = require("prom-client");
 const { passwordStrength } = require("check-password-strength");
 const TranslatableError = require("./translatable-error");
 
@@ -201,15 +198,12 @@ const { EmbeddedMariaDB } = require("./embedded-mariadb");
 const { SetupDatabase } = require("./setup-database");
 const { chartSocketHandler } = require("./socket-handlers/chart-socket-handler");
 
-app.use(express.json());
-
-// Global Middleware
-app.use(function (req, res, next) {
+// Global hook for security headers
+app.addHook("onRequest", async (request, reply) => {
     if (!disableFrameSameOrigin) {
-        res.setHeader("X-Frame-Options", "SAMEORIGIN");
+        reply.header("X-Frame-Options", "SAMEORIGIN");
     }
-    res.removeHeader("X-Powered-By");
-    next();
+    reply.removeHeader("X-Powered-By");
 });
 
 /**
@@ -246,6 +240,11 @@ let needSetup = false;
     log.debug("server", "Initializing Prometheus");
     await Prometheus.init();
 
+    // Register Fastify plugins
+    await app.register(require("@fastify/cors"), { origin: isDev ? "*" : false });
+    await app.register(require("@fastify/formbody"));
+    await app.register(require("@fastify/compress"));
+
     log.debug("server", "Adding route");
 
     // ***************************
@@ -253,7 +252,7 @@ let needSetup = false;
     // ***************************
 
     // Entry Page
-    app.get("/", async (request, response) => {
+    app.get("/", async (request, reply) => {
         let hostname = request.hostname;
         if (await setting("trustProxy")) {
             const proxy = request.headers["x-forwarded-host"];
@@ -269,39 +268,38 @@ let needSetup = false;
             log.debug("entry", "This is a status page domain");
 
             let slug = StatusPage.domainMappingList[hostname];
-            await StatusPage.handleStatusPageResponse(response, server.indexHTML, slug);
+            await StatusPage.handleStatusPageResponse(reply, server.indexHTML, slug);
         } else if (uptimeKumaEntryPage && uptimeKumaEntryPage.startsWith("statusPage-")) {
-            response.redirect("/status/" + uptimeKumaEntryPage.replace("statusPage-", ""));
+            reply.redirect("/status/" + uptimeKumaEntryPage.replace("statusPage-", ""));
         } else {
-            response.redirect("/dashboard");
+            reply.redirect("/dashboard");
         }
     });
 
-    app.get("/setup-database-info", (request, response) => {
-        allowDevAllOrigin(response);
-        response.json({
+    app.get("/setup-database-info", (request, reply) => {
+        allowDevAllOrigin(reply);
+        reply.send({
             runningSetup: false,
             needSetup: false,
         });
     });
 
     if (isDev) {
-        app.use(express.urlencoded({ extended: true }));
-        app.post("/test-webhook", async (request, response) => {
+        app.post("/test-webhook", async (request, reply) => {
             log.debug("test", request.headers);
             log.debug("test", request.body);
-            response.send("OK");
+            reply.send("OK");
         });
 
-        app.post("/test-x-www-form-urlencoded", async (request, response) => {
+        app.post("/test-x-www-form-urlencoded", async (request, reply) => {
             log.debug("test", request.headers);
             log.debug("test", request.body);
-            response.send("OK");
+            reply.send("OK");
         });
 
         const fs = require("fs");
 
-        app.get("/_e2e/take-sqlite-snapshot", async (request, response) => {
+        app.get("/_e2e/take-sqlite-snapshot", async (request, reply) => {
             await Database.close();
             try {
                 fs.cpSync(Database.sqlitePath, `${Database.sqlitePath}.e2e-snapshot`);
@@ -310,10 +308,10 @@ let needSetup = false;
             }
             await Database.connect();
 
-            response.send("Snapshot taken.");
+            reply.send("Snapshot taken.");
         });
 
-        app.get("/_e2e/restore-sqlite-snapshot", async (request, response) => {
+        app.get("/_e2e/restore-sqlite-snapshot", async (request, reply) => {
             if (!fs.existsSync(`${Database.sqlitePath}.e2e-snapshot`)) {
                 throw new Error("Snapshot doesn't exist.");
             }
@@ -326,54 +324,59 @@ let needSetup = false;
             }
             await Database.connect();
 
-            response.send("Snapshot restored.");
+            reply.send("Snapshot restored.");
         });
     }
 
     // Robots.txt
-    app.get("/robots.txt", async (_request, response) => {
+    app.get("/robots.txt", async (_request, reply) => {
         let txt = "User-agent: *\nDisallow:";
         if (!(await setting("searchEngineIndex"))) {
             txt += " /";
         }
-        response.setHeader("Content-Type", "text/plain");
-        response.send(txt);
+        reply.header("Content-Type", "text/plain");
+        reply.send(txt);
     });
 
     // Basic Auth Router here
 
     // Prometheus API metrics  /metrics
     // With Basic Auth using the first user's username/password
-    app.get("/metrics", apiAuth, prometheusAPIMetrics());
+    app.get("/metrics", { preHandler: apiAuth }, async (request, reply) => {
+        reply.header("Content-Type", client.register.contentType);
+        reply.send(await client.register.metrics());
+    });
 
-    app.use(
-        "/",
-        expressStaticGzip("dist", {
-            enableBrotli: true,
-        })
-    );
+    await app.register(require("@fastify/static"), {
+        root: path.resolve("dist"),
+        prefix: "/",
+    });
 
     // ./data/upload
-    app.use("/upload", express.static(Database.uploadDir));
+    await app.register(require("@fastify/static"), {
+        root: path.resolve(Database.uploadDir),
+        prefix: "/upload/",
+        decorateReply: false,
+    });
 
-    app.get("/.well-known/change-password", async (_, response) => {
-        response.redirect("https://github.com/louislam/uptime-kuma/wiki/Reset-Password-via-CLI");
+    app.get("/.well-known/change-password", async (_, reply) => {
+        reply.redirect("https://github.com/louislam/uptime-kuma/wiki/Reset-Password-via-CLI");
     });
 
     // API Router
     const apiRouter = require("./routers/api-router");
-    app.use(apiRouter);
+    await app.register(apiRouter);
 
     // Status Page Router
     const statusPageRouter = require("./routers/status-page-router");
-    app.use(statusPageRouter);
+    await app.register(statusPageRouter);
 
-    // Universal Route Handler, must be at the end of all express routes.
-    app.get("*", async (_request, response) => {
-        if (_request.originalUrl.startsWith("/upload/")) {
-            response.status(404).send("File not found.");
+    // Universal Route Handler, must be at the end of all routes.
+    app.setNotFoundHandler(async (request, reply) => {
+        if (request.url.startsWith("/upload/")) {
+            reply.code(404).send("File not found.");
         } else {
-            response.send(server.indexHTML);
+            reply.type("text/html").send(server.indexHTML);
         }
     });
 
@@ -1747,24 +1750,24 @@ let needSetup = false;
 
     log.debug("server", "Init the server");
 
-    server.httpServer.once("error", async (err) => {
+    await server.start();
+
+    try {
+        await app.listen({ port, host: hostname || "0.0.0.0" });
+    } catch (err) {
         log.error("server", "Cannot listen: " + err.message);
         await shutdownFunction();
         process.exit(1);
-    });
+    }
 
-    await server.start();
+    printServerUrls("server", port, hostname, config.isSSL);
 
-    server.httpServer.listen(port, hostname, async () => {
-        printServerUrls("server", port, hostname, config.isSSL);
+    await startMonitors();
 
-        await startMonitors();
+    // Put this here. Start background jobs after the db and server is ready to prevent clear up during db migration.
+    await initBackgroundJobs();
 
-        // Put this here. Start background jobs after the db and server is ready to prevent clear up during db migration.
-        await initBackgroundJobs();
-
-        checkVersion.startInterval();
-    });
+    checkVersion.startInterval();
 
     // Start cloudflared at the end if configured
     await cloudflaredAutoStart(cloudflaredToken);

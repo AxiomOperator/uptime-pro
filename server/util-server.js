@@ -708,17 +708,17 @@ exports.filterAndJoin = (parts, connector = "") => {
  */
 module.exports.sendHttpError = (res, msg = "") => {
     if (msg.includes("SQLITE_BUSY") || msg.includes("SQLITE_LOCKED")) {
-        res.status(503).json({
+        res.status(503).send({
             status: "fail",
             msg: msg,
         });
     } else if (msg.toLowerCase().includes("not found")) {
-        res.status(404).json({
+        res.status(404).send({
             status: "fail",
             msg: msg,
         });
     } else {
-        res.status(403).json({
+        res.status(403).send({
             status: "fail",
             msg: msg,
         });

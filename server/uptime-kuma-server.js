@@ -1,7 +1,5 @@
-const express = require("express");
-const https = require("https");
+const Fastify = require("fastify");
 const fs = require("fs");
-const http = require("http");
 const { Server } = require("socket.io");
 const { getPrisma } = require("./prisma");
 const prisma = getPrisma();
@@ -83,22 +81,20 @@ class UptimeKumaServer {
         // Set default axios timeout to 5 minutes instead of infinity
         axios.defaults.timeout = 300 * 1000;
 
-        log.info("server", "Creating express and socket.io instance");
-        this.app = express();
+        log.info("server", "Creating fastify and socket.io instance");
+        const fastifyOptions = { logger: false };
         if (isSSL) {
             log.info("server", "Server Type: HTTPS");
-            this.httpServer = https.createServer(
-                {
-                    key: fs.readFileSync(sslKey),
-                    cert: fs.readFileSync(sslCert),
-                    passphrase: sslKeyPassphrase,
-                },
-                this.app
-            );
+            fastifyOptions.https = {
+                key: fs.readFileSync(sslKey),
+                cert: fs.readFileSync(sslCert),
+                passphrase: sslKeyPassphrase,
+            };
         } else {
             log.info("server", "Server Type: HTTP");
-            this.httpServer = http.createServer(this.app);
         }
+        this.app = Fastify(fastifyOptions);
+        this.httpServer = this.app.server;
 
         try {
             this.indexHTML = fs.readFileSync("./dist/index.html").toString();
@@ -202,7 +198,11 @@ class UptimeKumaServer {
      */
     async initAfterDatabaseReady() {
         // Static
-        this.app.use("/screenshots", express.static(Database.screenshotDir));
+        await this.app.register(require("@fastify/static"), {
+            root: path.resolve(Database.screenshotDir),
+            prefix: "/screenshots/",
+            decorateReply: false,
+        });
 
         process.env.TZ = await this.getTimezone();
         dayjs.tz.setDefault(process.env.TZ);
