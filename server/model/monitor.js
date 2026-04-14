@@ -150,7 +150,7 @@ class Monitor {
             timeout: this.timeout,
             interval: this.interval,
             retryInterval: this.retryInterval,
-            retryOnlyOnStatusCodeFailure: Boolean(this.retry_only_on_status_code_failure),
+            retryOnlyOnStatusCodeFailure: Boolean(this.retryOnlyOnStatusCodeFailure),
             resendInterval: this.resendInterval,
             keyword: this.keyword,
             invertKeyword: this.isInvertKeyword(),
@@ -161,12 +161,12 @@ class Monitor {
             packetSize: this.packetSize,
             maxredirects: this.maxredirects,
             accepted_statuscodes: this.getAcceptedStatuscodes(),
-            dns_resolve_type: this.dns_resolve_type,
-            dns_resolve_server: this.dns_resolve_server,
-            dns_last_result: this.dns_last_result,
-            docker_container: this.docker_container,
-            docker_host: this.docker_host,
-            proxyId: this.proxy_id,
+            dns_resolve_type: this.dnsResolveType,
+            dns_resolve_server: this.dnsResolveServer,
+            dns_last_result: this.dnsLastResult,
+            docker_container: this.dockerContainer,
+            docker_host: this.dockerHost,
+            proxyId: this.proxyId,
             notificationIDList: preloadData.notifications.get(this.id) || {},
             tags: preloadData.tags.get(this.id) || [],
             maintenance: preloadData.maintenanceStatus.get(this.id),
@@ -187,7 +187,7 @@ class Monitor {
             httpBodyEncoding: this.httpBodyEncoding,
             jsonPath: this.jsonPath,
             expectedValue: this.expectedValue,
-            system_service_name: this.system_service_name,
+            system_service_name: this.systemServiceName,
             kafkaProducerTopic: this.kafkaProducerTopic,
             kafkaProducerBrokers: JSON.parse(this.kafkaProducerBrokers),
             kafkaProducerSsl: this.getKafkaProducerSsl(),
@@ -195,7 +195,7 @@ class Monitor {
             kafkaProducerMessage: this.kafkaProducerMessage,
             screenshot,
             cacheBust: this.getCacheBust(),
-            remote_browser: this.remote_browser,
+            remote_browser: this.remoteBrowser,
             snmpOid: this.snmpOid,
             jsonPathOperator: this.jsonPathOperator,
             snmpVersion: this.snmpVersion,
@@ -203,17 +203,17 @@ class Monitor {
             rabbitmqNodes: JSON.parse(this.rabbitmqNodes),
             conditions: JSON.parse(this.conditions),
             ipFamily: this.ipFamily,
-            expectedTlsAlert: this.expected_tls_alert,
+            expectedTlsAlert: this.expectedTlsAlert,
 
             // ping advanced options
             ping_numeric: this.isPingNumeric(),
-            ping_count: this.ping_count,
-            ping_per_request_timeout: this.ping_per_request_timeout,
+            ping_count: this.pingCount,
+            ping_per_request_timeout: this.pingPerRequestTimeout,
 
             // response saving options
             saveResponse: this.getSaveResponse(),
             saveErrorResponse: this.getSaveErrorResponse(),
-            responseMaxLength: this.response_max_length ?? RESPONSE_BODY_LENGTH_DEFAULT,
+            responseMaxLength: this.responseMaxLength ?? RESPONSE_BODY_LENGTH_DEFAULT,
         };
 
         if (includeSensitiveData) {
@@ -223,14 +223,14 @@ class Monitor {
                 body: this.body,
                 grpcBody: this.grpcBody,
                 grpcMetadata: this.grpcMetadata,
-                basic_auth_user: this.basic_auth_user,
-                basic_auth_pass: this.basic_auth_pass,
-                oauth_client_id: this.oauth_client_id,
-                oauth_client_secret: this.oauth_client_secret,
-                oauth_token_url: this.oauth_token_url,
-                oauth_scopes: this.oauth_scopes,
-                oauth_audience: this.oauth_audience,
-                oauth_auth_method: this.oauth_auth_method,
+                basic_auth_user: this.basicAuthUser,
+                basic_auth_pass: this.basicAuthPass,
+                oauth_client_id: this.oauthClientId,
+                oauth_client_secret: this.oauthClientSecret,
+                oauth_token_url: this.oauthTokenUrl,
+                oauth_scopes: this.oauthScopes,
+                oauth_audience: this.oauthAudience,
+                oauth_auth_method: this.oauthAuthMethod,
                 pushToken: this.pushToken,
                 databaseConnectionString: this.databaseConnectionString,
                 radiusUsername: this.radiusUsername,
@@ -272,10 +272,10 @@ class Monitor {
      */
     async getCertExpiry(monitorID) {
         const prisma = getPrisma();
-        let tlsInfoBean = await prisma.monitorTlsInfo.findFirst({ where: { monitor_id: monitorID } });
+        let tlsInfoRecord = await prisma.monitorTlsInfo.findFirst({ where: { monitorId: monitorID } });
         let tlsInfo;
-        if (tlsInfoBean) {
-            tlsInfo = JSON.parse(tlsInfoBean?.info_json);
+        if (tlsInfoRecord) {
+            tlsInfo = JSON.parse(tlsInfoRecord?.infoJson);
             if (tlsInfo?.valid && tlsInfo?.certInfo?.daysRemaining) {
                 return {
                     certExpiryDaysRemaining: tlsInfo.certInfo.daysRemaining,
@@ -302,7 +302,7 @@ class Monitor {
      * @returns {boolean} True if IP addresses will be output instead of symbolic hostnames
      */
     isPingNumeric() {
-        return Boolean(this.ping_numeric);
+        return Boolean(this.pingNumeric);
     }
 
     /**
@@ -358,7 +358,7 @@ class Monitor {
      * @returns {object} Accepted status codes
      */
     getAcceptedStatuscodes() {
-        return JSON.parse(this.accepted_statuscodes_json);
+        return JSON.parse(this.acceptedStatuscodesJson);
     }
 
     /**
@@ -390,7 +390,7 @@ class Monitor {
      * @returns {boolean} Should save response data on success?
      */
     getSaveResponse() {
-        return Boolean(this.save_response);
+        return Boolean(this.saveResponse);
     }
 
     /**
@@ -398,7 +398,7 @@ class Monitor {
      * @returns {boolean} Should save response data on error?
      */
     getSaveErrorResponse() {
-        return Boolean(this.save_error_response);
+        return Boolean(this.saveErrorResponse);
     }
 
     /**
@@ -438,7 +438,7 @@ class Monitor {
 
             if (!previousBeat || this.type === "push") {
                 const prisma = getPrisma();
-                const prevBeatRow = await prisma.heartbeat.findFirst({ where: { monitor_id: this.id }, orderBy: { time: "desc" } });
+                const prevBeatRow = await prisma.heartbeat.findFirst({ where: { monitorId: this.id }, orderBy: { time: "desc" } });
                 previousBeat = prevBeatRow ? Object.assign(new Heartbeat(), prevBeatRow) : null;
                 if (previousBeat) {
                     retries = previousBeat.retries;
@@ -447,14 +447,14 @@ class Monitor {
 
             const isFirstBeat = !previousBeat;
 
-            let bean = new Heartbeat();
-            bean.monitor_id = this.id;
-            bean.time = new Date();
-            bean.status = DOWN;
-            bean.down_count = previousBeat?.down_count || 0;
+            let heartbeat = new Heartbeat();
+            heartbeat.monitorId = this.id;
+            heartbeat.time = new Date();
+            heartbeat.status = DOWN;
+            heartbeat.downCount = previousBeat?.downCount || 0;
 
             if (this.isUpsideDown()) {
-                bean.status = flipStatus(bean.status);
+                heartbeat.status = flipStatus(heartbeat.status);
             }
 
             // Runtime patch timeout if it is 0
@@ -465,24 +465,24 @@ class Monitor {
 
             try {
                 if (await Monitor.isUnderMaintenance(this.id)) {
-                    bean.msg = "Monitor under maintenance";
-                    bean.status = MAINTENANCE;
+                    heartbeat.msg = "Monitor under maintenance";
+                    heartbeat.status = MAINTENANCE;
                 } else if (this.type === "http" || this.type === "keyword" || this.type === "json-query") {
-                    // Do not do any queries/high loading things before the "bean.ping"
+                    // Do not do any queries/high loading things before the "heartbeat.ping"
                     let startTime = dayjs().valueOf();
 
                     // HTTP basic auth
                     let basicAuthHeader = {};
-                    if (this.auth_method === "basic") {
+                    if (this.authMethod === "basic") {
                         basicAuthHeader = {
-                            Authorization: "Basic " + encodeBase64(this.basic_auth_user, this.basic_auth_pass),
+                            Authorization: "Basic " + encodeBase64(this.basicAuthUser, this.basicAuthPass),
                         };
                     }
 
                     // OIDC: Basic client credential flow.
                     // Additional grants might be implemented in the future
                     let oauth2AuthHeader = {};
-                    if (this.auth_method === "oauth2-cc") {
+                    if (this.authMethod === "oauth2-cc") {
                         try {
                             if (
                                 this.oauthAccessToken === undefined ||
@@ -574,9 +574,9 @@ class Monitor {
                         };
                     }
 
-                    if (this.proxy_id) {
+                    if (this.proxyId) {
                         const prisma = getPrisma();
-                        const proxy = await prisma.proxy.findUnique({ where: { id: this.proxy_id } });
+                        const proxy = await prisma.proxy.findUnique({ where: { id: this.proxyId } });
 
                         if (proxy && proxy.active) {
                             const { httpAgent, httpsAgent } = Proxy.createAgents(proxy, {
@@ -603,7 +603,7 @@ class Monitor {
                         options.httpsAgent = new HttpsCookieAgent(httpsCookieAgentOptions);
                     }
 
-                    if (this.auth_method === "mtls") {
+                    if (this.authMethod === "mtls") {
                         if (this.tlsCert !== null && this.tlsCert !== "") {
                             options.httpsAgent.options.cert = Buffer.from(this.tlsCert);
                         }
@@ -637,12 +637,12 @@ class Monitor {
                     // Make Request
                     let res = await this.makeAxiosRequest(options);
 
-                    bean.msg = `${res.status} - ${res.statusText}`;
-                    bean.ping = dayjs().valueOf() - startTime;
+                    heartbeat.msg = `${res.status} - ${res.statusText}`;
+                    heartbeat.ping = dayjs().valueOf() - startTime;
 
                     // in the frontend, the save response is only shown if the saveErrorResponse is set
                     if (this.getSaveResponse() && this.getSaveErrorResponse()) {
-                        await this.saveResponseData(bean, res.data);
+                        await this.saveResponseData(heartbeat, res.data);
                     }
 
                     // fallback for if kelog event is not emitted, but we may still have tlsInfo,
@@ -668,7 +668,7 @@ class Monitor {
                     }
 
                     if (this.type === "http") {
-                        bean.status = UP;
+                        heartbeat.status = UP;
                     } else if (this.type === "keyword") {
                         let data = res.data;
 
@@ -679,15 +679,15 @@ class Monitor {
 
                         let keywordFound = data.includes(this.keyword);
                         if (keywordFound === !this.isInvertKeyword()) {
-                            bean.msg += ", keyword " + (keywordFound ? "is" : "not") + " found";
-                            bean.status = UP;
+                            heartbeat.msg += ", keyword " + (keywordFound ? "is" : "not") + " found";
+                            heartbeat.status = UP;
                         } else {
                             data = data.replace(/<[^>]*>?|[\n\r]|\s+/gm, " ").trim();
                             if (data.length > 50) {
                                 data = data.substring(0, 47) + "...";
                             }
                             throw new Error(
-                                bean.msg +
+                                heartbeat.msg +
                                     ", but keyword is " +
                                     (keywordFound ? "present" : "not") +
                                     " in [" +
@@ -706,8 +706,8 @@ class Monitor {
                         );
 
                         if (status) {
-                            bean.status = UP;
-                            bean.msg = `JSON query passes (comparing ${response} ${this.jsonPathOperator} ${this.expectedValue})`;
+                            heartbeat.status = UP;
+                            heartbeat.msg = `JSON query passes (comparing ${response} ${this.jsonPathOperator} ${this.expectedValue})`;
                         } else {
                             throw new Error(
                                 `JSON query does not pass (comparing ${response} ${this.jsonPathOperator} ${this.expectedValue})`
@@ -715,17 +715,17 @@ class Monitor {
                         }
                     }
                 } else if (this.type === "ping") {
-                    bean.ping = await ping(
+                    heartbeat.ping = await ping(
                         this.hostname,
-                        this.ping_count,
+                        this.pingCount,
                         "",
-                        this.ping_numeric,
+                        this.pingNumeric,
                         this.packetSize,
                         this.timeout,
-                        this.ping_per_request_timeout
+                        this.pingPerRequestTimeout
                     );
-                    bean.msg = "";
-                    bean.status = UP;
+                    heartbeat.msg = "";
+                    heartbeat.status = UP;
                 } else if (this.type === "push") {
                     // Type: Push
                     log.debug(
@@ -745,7 +745,7 @@ class Monitor {
                             previousBeat.status !== (this.isUpsideDown() ? DOWN : UP) ||
                             msSinceLastBeat > beatInterval * 1000 + bufferTime
                         ) {
-                            bean.duration = Math.round(msSinceLastBeat / 1000);
+                            heartbeat.duration = Math.round(msSinceLastBeat / 1000);
                             throw new Error("No heartbeat in the time window");
                         } else {
                             let timeout = beatInterval * 1000 - msSinceLastBeat;
@@ -761,7 +761,7 @@ class Monitor {
                             return;
                         }
                     } else {
-                        bean.duration = beatInterval;
+                        heartbeat.duration = beatInterval;
                         throw new Error("No heartbeat in the time window");
                     }
                 } else if (this.type === "steam") {
@@ -797,11 +797,11 @@ class Monitor {
                     });
 
                     if (res.data.response && res.data.response.servers && res.data.response.servers.length > 0) {
-                        bean.status = UP;
-                        bean.msg = res.data.response.servers[0].name;
+                        heartbeat.status = UP;
+                        heartbeat.msg = res.data.response.servers[0].name;
 
                         try {
-                            bean.ping = await ping(
+                            heartbeat.ping = await ping(
                                 this.hostname,
                                 PING_COUNT_DEFAULT,
                                 "",
@@ -818,7 +818,7 @@ class Monitor {
                     log.debug("monitor", `[${this.name}] Prepare Options for Axios`);
 
                     const options = {
-                        url: `/containers/${this.docker_container}/json`,
+                        url: `/containers/${this.dockerContainer}/json`,
                         timeout: this.interval * 1000 * 0.8,
                         headers: {
                             Accept: "*/*",
@@ -834,7 +834,7 @@ class Monitor {
                     };
 
                     const prisma = getPrisma();
-                    const dockerHost = await prisma.dockerHost.findUnique({ where: { id: this.docker_host } });
+                    const dockerHost = await prisma.dockerHost.findUnique({ where: { id: this.dockerHost } });
 
                     if (!dockerHost) {
                         throw new Error("Failed to load docker host config");
@@ -862,22 +862,22 @@ class Monitor {
                         throw Error("Container is in a paused state");
                     }
                     if (res.data.State.Restarting) {
-                        bean.status = PENDING;
-                        bean.msg = "Container is reporting it is currently restarting";
+                        heartbeat.status = PENDING;
+                        heartbeat.msg = "Container is reporting it is currently restarting";
                     } else if (res.data.State.Health && res.data.State.Health.Status !== "none") {
                         // if healthchecks are disabled (?), Health MAY not be present
                         if (res.data.State.Health.Status === "healthy") {
-                            bean.status = UP;
-                            bean.msg = "healthy";
+                            heartbeat.status = UP;
+                            heartbeat.msg = "healthy";
                         } else if (res.data.State.Health.Status === "unhealthy") {
                             throw Error("Container State is unhealthy according to its healthcheck");
                         } else {
-                            bean.status = PENDING;
-                            bean.msg = res.data.State.Health.Status;
+                            heartbeat.status = PENDING;
+                            heartbeat.msg = res.data.State.Health.Status;
                         }
                     } else {
-                        bean.status = UP;
-                        bean.msg = `Container has not reported health and is currently ${res.data.State.Status}. As it is running, it is considered UP. Consider adding a health check for better service visibility`;
+                        heartbeat.status = UP;
+                        heartbeat.msg = `Container has not reported health and is currently ${res.data.State.Status}. As it is running, it is considered UP. Consider adding a health check for better service visibility`;
                     }
                 } else if (this.type === "radius") {
                     let startTime = dayjs().valueOf();
@@ -903,27 +903,27 @@ class Monitor {
                         this.interval * 1000 * 0.4
                     );
 
-                    bean.msg = resp.code;
-                    bean.status = UP;
-                    bean.ping = dayjs().valueOf() - startTime;
+                    heartbeat.msg = resp.code;
+                    heartbeat.status = UP;
+                    heartbeat.ping = dayjs().valueOf() - startTime;
                 } else if (this.type in UptimeKumaServer.monitorTypeList) {
                     let startTime = dayjs().valueOf();
                     const monitorType = UptimeKumaServer.monitorTypeList[this.type];
-                    await monitorType.check(this, bean, UptimeKumaServer.getInstance());
+                    await monitorType.check(this, heartbeat, UptimeKumaServer.getInstance());
 
-                    if (!monitorType.allowCustomStatus && bean.status !== UP) {
+                    if (!monitorType.allowCustomStatus && heartbeat.status !== UP) {
                         throw new Error(
                             "The monitor implementation is incorrect, non-UP error must throw error inside check()"
                         );
                     }
 
-                    if (bean.ping === undefined || bean.ping === null) {
-                        bean.ping = dayjs().valueOf() - startTime;
+                    if (heartbeat.ping === undefined || heartbeat.ping === null) {
+                        heartbeat.ping = dayjs().valueOf() - startTime;
                     }
                 } else if (this.type === "kafka-producer") {
                     let startTime = dayjs().valueOf();
 
-                    bean.msg = await kafkaProducerAsync(
+                    heartbeat.msg = await kafkaProducerAsync(
                         JSON.parse(this.kafkaProducerBrokers),
                         this.kafkaProducerTopic,
                         this.kafkaProducerMessage,
@@ -935,16 +935,16 @@ class Monitor {
                         },
                         JSON.parse(this.kafkaProducerSaslOptions)
                     );
-                    bean.status = UP;
-                    bean.ping = dayjs().valueOf() - startTime;
+                    heartbeat.status = UP;
+                    heartbeat.ping = dayjs().valueOf() - startTime;
                 } else {
                     throw new Error("Unknown Monitor Type");
                 }
 
                 if (this.isUpsideDown()) {
-                    bean.status = flipStatus(bean.status);
+                    heartbeat.status = flipStatus(heartbeat.status);
 
-                    if (bean.status === DOWN) {
+                    if (heartbeat.status === DOWN) {
                         throw new Error("Flip UP to DOWN");
                     }
                 }
@@ -952,20 +952,20 @@ class Monitor {
                 retries = 0;
             } catch (error) {
                 if (error?.name === "CanceledError") {
-                    bean.msg = `timeout by AbortSignal (${this.timeout}s)`;
+                    heartbeat.msg = `timeout by AbortSignal (${this.timeout}s)`;
                 } else {
-                    bean.msg = error.message;
+                    heartbeat.msg = error.message;
                 }
 
                 if (this.getSaveErrorResponse() && error?.response?.data !== undefined) {
-                    await this.saveResponseData(bean, error.response.data);
+                    await this.saveResponseData(heartbeat, error.response.data);
                 }
 
                 // If UP come in here, it must be upside down mode
                 // Just reset the retries
-                if (this.isUpsideDown() && bean.status === UP) {
+                if (this.isUpsideDown() && heartbeat.status === UP) {
                     retries = 0;
-                } else if (this.type === "json-query" && this.retry_only_on_status_code_failure) {
+                } else if (this.type === "json-query" && this.retryOnlyOnStatusCodeFailure) {
                     // For json-query monitors with retry_only_on_status_code_failure enabled,
                     // only retry if the error is NOT from JSON query evaluation
                     // JSON query errors have the message "JSON query does not pass..."
@@ -977,7 +977,7 @@ class Monitor {
                         retries = 0;
                     } else if (this.maxretries > 0 && retries < this.maxretries) {
                         retries++;
-                        bean.status = PENDING;
+                        heartbeat.status = PENDING;
                     } else {
                         // Continue counting retries during DOWN
                         retries++;
@@ -986,7 +986,7 @@ class Monitor {
                     // General retry logic for all other monitor types
                     if (this.maxretries > 0 && retries < this.maxretries) {
                         retries++;
-                        bean.status = PENDING;
+                        heartbeat.status = PENDING;
                     } else {
                         // Continue counting retries during DOWN
                         retries++;
@@ -994,19 +994,19 @@ class Monitor {
                 }
             }
 
-            bean.retries = retries;
+            heartbeat.retries = retries;
 
             log.debug("monitor", `[${this.name}] Check isImportant`);
-            let isImportant = Monitor.isImportantBeat(isFirstBeat, previousBeat?.status, bean.status);
+            let isImportant = Monitor.isImportantBeat(isFirstBeat, previousBeat?.status, heartbeat.status);
 
             // Mark as important if status changed, ignore pending pings,
             // Don't notify if disrupted changes to up
             if (isImportant) {
-                bean.important = true;
+                heartbeat.important = true;
 
-                if (Monitor.isImportantForNotification(isFirstBeat, previousBeat?.status, bean.status)) {
+                if (Monitor.isImportantForNotification(isFirstBeat, previousBeat?.status, heartbeat.status)) {
                     log.debug("monitor", `[${this.name}] sendNotification`);
-                    await Monitor.sendNotification(isFirstBeat, this, bean);
+                    await Monitor.sendNotification(isFirstBeat, this, heartbeat);
                 } else {
                     log.debug(
                         "monitor",
@@ -1015,31 +1015,31 @@ class Monitor {
                 }
 
                 // Reset down count
-                bean.down_count = 0;
+                heartbeat.downCount = 0;
                 log.debug("monitor", `[${this.name}] apicache clear`);
                 apicache.clear();
 
-                await UptimeKumaServer.getInstance().sendMaintenanceListByUserID(this.user_id);
+                await UptimeKumaServer.getInstance().sendMaintenanceListByUserID(this.userId);
             } else {
-                bean.important = false;
+                heartbeat.important = false;
 
-                if (bean.status === DOWN && this.resendInterval > 0) {
-                    ++bean.down_count;
-                    if (bean.down_count >= this.resendInterval) {
+                if (heartbeat.status === DOWN && this.resendInterval > 0) {
+                    ++heartbeat.downCount;
+                    if (heartbeat.downCount >= this.resendInterval) {
                         // Send notification again, because we are still DOWN
                         log.debug(
                             "monitor",
-                            `[${this.name}] sendNotification again: Down Count: ${bean.down_count} | Resend Interval: ${this.resendInterval}`
+                            `[${this.name}] sendNotification again: Down Count: ${heartbeat.downCount} | Resend Interval: ${this.resendInterval}`
                         );
-                        await Monitor.sendNotification(isFirstBeat, this, bean);
+                        await Monitor.sendNotification(isFirstBeat, this, heartbeat);
 
                         // Reset down count
-                        bean.down_count = 0;
+                        heartbeat.downCount = 0;
                     }
                 }
             }
 
-            if (bean.status !== MAINTENANCE && Boolean(this.domainExpiryNotification)) {
+            if (heartbeat.status !== MAINTENANCE && Boolean(this.domainExpiryNotification)) {
                 try {
                     const supportInfo = await DomainExpiry.checkSupport(this);
                     const domainExpiryDate = await DomainExpiry.checkExpiry(supportInfo.domain);
@@ -1064,70 +1064,70 @@ class Monitor {
                 }
             }
 
-            if (bean.status === UP) {
+            if (heartbeat.status === UP) {
                 log.debug(
                     "monitor",
-                    `Monitor #${this.id} '${this.name}': Successful Response: ${bean.ping} ms | Interval: ${beatInterval} seconds | Type: ${this.type}`
+                    `Monitor #${this.id} '${this.name}': Successful Response: ${heartbeat.ping} ms | Interval: ${beatInterval} seconds | Type: ${this.type}`
                 );
-            } else if (bean.status === PENDING) {
+            } else if (heartbeat.status === PENDING) {
                 if (this.retryInterval > 0) {
                     beatInterval = this.retryInterval;
                 }
                 log.warn(
                     "monitor",
-                    `Monitor #${this.id} '${this.name}': Pending: ${bean.msg} | Max retries: ${this.maxretries} | Retry: ${retries} | Retry Interval: ${beatInterval} seconds | Type: ${this.type}`
+                    `Monitor #${this.id} '${this.name}': Pending: ${heartbeat.msg} | Max retries: ${this.maxretries} | Retry: ${retries} | Retry Interval: ${beatInterval} seconds | Type: ${this.type}`
                 );
-            } else if (bean.status === MAINTENANCE) {
+            } else if (heartbeat.status === MAINTENANCE) {
                 log.warn("monitor", `Monitor #${this.id} '${this.name}': Under Maintenance | Type: ${this.type}`);
             } else {
                 log.warn(
                     "monitor",
-                    `Monitor #${this.id} '${this.name}': Failing: ${bean.msg} | Interval: ${beatInterval} seconds | Type: ${this.type} | Down Count: ${bean.down_count} | Resend Interval: ${this.resendInterval}`
+                    `Monitor #${this.id} '${this.name}': Failing: ${heartbeat.msg} | Interval: ${beatInterval} seconds | Type: ${this.type} | Down Count: ${heartbeat.downCount} | Resend Interval: ${this.resendInterval}`
                 );
             }
 
             // Calculate uptime
             let uptimeCalculator = await UptimeCalculator.getUptimeCalculator(this.id);
-            let endTimeDayjs = await uptimeCalculator.update(bean.status, parseFloat(bean.ping));
-            bean.end_time = endTimeDayjs.toDate();
+            let endTimeDayjs = await uptimeCalculator.update(heartbeat.status, parseFloat(heartbeat.ping));
+            heartbeat.endTime = endTimeDayjs.toDate();
 
             // Send to frontend
             log.debug("monitor", `[${this.name}] Send to socket`);
-            io.to(this.user_id).emit("heartbeat", bean.toJSON());
-            Monitor.sendStats(io, this.id, this.user_id);
+            io.to(this.userId).emit("heartbeat", heartbeat.toJSON());
+            Monitor.sendStats(io, this.id, this.userId);
 
             // Store to database
             log.debug("monitor", `[${this.name}] Store`);
             const prismaStore = getPrisma();
             const savedBeat = await prismaStore.heartbeat.create({
                 data: {
-                    monitor_id: bean.monitor_id,
-                    time: bean.time,
-                    status: bean.status,
-                    msg: bean.msg ?? null,
-                    ping: bean.ping ?? null,
-                    important: bean.important ?? false,
-                    duration: bean.duration ?? 0,
-                    down_count: bean.down_count ?? 0,
-                    end_time: bean.end_time ?? null,
-                    retries: bean.retries ?? 0,
-                    response: bean.response ?? null,
+                    monitorId: heartbeat.monitorId,
+                    time: heartbeat.time,
+                    status: heartbeat.status,
+                    msg: heartbeat.msg ?? null,
+                    ping: heartbeat.ping ?? null,
+                    important: heartbeat.important ?? false,
+                    duration: heartbeat.duration ?? 0,
+                    downCount: heartbeat.downCount ?? 0,
+                    endTime: heartbeat.endTime ?? null,
+                    retries: heartbeat.retries ?? 0,
+                    response: heartbeat.response ?? null,
                 },
             });
-            bean.id = savedBeat.id;
+            heartbeat.id = savedBeat.id;
 
             log.debug("monitor", `[${this.name}] prometheus.update`);
             const data24h = uptimeCalculator.get24Hour();
             const data30d = uptimeCalculator.get30Day();
             const data1y = uptimeCalculator.get1Year();
-            this.prometheus?.update(bean, tlsInfo, { data24h, data30d, data1y });
+            this.prometheus?.update(heartbeat, tlsInfo, { data24h, data30d, data1y });
 
-            previousBeat = bean;
+            previousBeat = heartbeat;
 
             if (!this.isStop) {
                 log.debug("monitor", `[${this.name}] SetTimeout for next check.`);
 
-                let intervalRemainingMs = Math.max(1, beatInterval * 1000 - dayjs().diff(dayjs.utc(bean.time)));
+                let intervalRemainingMs = Math.max(1, beatInterval * 1000 - dayjs().diff(dayjs.utc(heartbeat.time)));
 
                 log.debug("monitor", `[${this.name}] Next heartbeat in: ${intervalRemainingMs}ms`);
 
@@ -1168,11 +1168,11 @@ class Monitor {
 
     /**
      * Save response body to a heartbeat if response saving is enabled.
-     * @param {Heartbeat} bean Heartbeat bean to populate.
+     * @param {Heartbeat} heartbeat Heartbeat to populate.
      * @param {unknown} data Response payload.
      * @returns {void}
      */
-    async saveResponseData(bean, data) {
+    async saveResponseData(heartbeat, data) {
         if (data === undefined) {
             return;
         }
@@ -1186,13 +1186,13 @@ class Monitor {
             }
         }
 
-        const maxSize = this.response_max_length ?? RESPONSE_BODY_LENGTH_DEFAULT;
+        const maxSize = this.responseMaxLength ?? RESPONSE_BODY_LENGTH_DEFAULT;
         if (responseData.length > maxSize) {
             responseData = responseData.substring(0, maxSize) + "... (truncated)";
         }
 
         // Offload brotli compression from main event loop to libuv thread pool
-        bean.response = (await brotliCompress(Buffer.from(responseData, "utf8"))).toString("base64");
+        heartbeat.response = (await brotliCompress(Buffer.from(responseData, "utf8"))).toString("base64");
     }
 
     /**
@@ -1205,12 +1205,12 @@ class Monitor {
     async makeAxiosRequest(options, finalCall = false) {
         try {
             let res;
-            if (this.auth_method === "ntlm") {
+            if (this.authMethod === "ntlm") {
                 options.httpsAgent.keepAlive = true;
 
                 res = await httpNtlm(options, {
-                    username: this.basic_auth_user,
-                    password: this.basic_auth_pass,
+                    username: this.basicAuthUser,
+                    password: this.basicAuthPass,
                     domain: this.authDomain,
                     workstation: this.authWorkstation ? this.authWorkstation : undefined,
                 });
@@ -1224,7 +1224,7 @@ class Monitor {
              * Make a single attempt to obtain an new access token in the event that
              * the recent api request failed for authentication purposes
              */
-            if (this.auth_method === "oauth2-cc" && error.response.status === 401 && !finalCall) {
+            if (this.authMethod === "oauth2-cc" && error.response.status === 401 && !finalCall) {
                 this.oauthAccessToken = await this.makeOidcTokenClientCredentialsRequest();
                 let oauth2AuthHeader = {
                     Authorization: this.oauthAccessToken.token_type + " " + this.oauthAccessToken.access_token,
@@ -1309,12 +1309,12 @@ class Monitor {
      */
     async updateTlsInfo(checkCertificateResult) {
         const prisma = getPrisma();
-        const existing = await prisma.monitorTlsInfo.findFirst({ where: { monitor_id: this.id } });
+        const existing = await prisma.monitorTlsInfo.findFirst({ where: { monitorId: this.id } });
 
         if (existing) {
             // Clear sent history if the cert changed.
             try {
-                let oldCertInfo = JSON.parse(existing.info_json);
+                let oldCertInfo = JSON.parse(existing.infoJson);
 
                 let isValidObjects =
                     oldCertInfo && oldCertInfo.certInfo && checkCertificateResult && checkCertificateResult.certInfo;
@@ -1335,13 +1335,13 @@ class Monitor {
 
             await prisma.monitorTlsInfo.update({
                 where: { id: existing.id },
-                data: { info_json: JSON.stringify(checkCertificateResult) },
+                data: { infoJson: JSON.stringify(checkCertificateResult) },
             });
         } else {
             await prisma.monitorTlsInfo.create({
                 data: {
-                    monitor_id: this.id,
-                    info_json: JSON.stringify(checkCertificateResult),
+                    monitorId: this.id,
+                    infoJson: JSON.stringify(checkCertificateResult),
                 },
             });
         }
@@ -1407,9 +1407,9 @@ class Monitor {
      */
     static async sendCertInfo(io, monitorID, userID) {
         const prisma = getPrisma();
-        let tlsInfo = await prisma.monitorTlsInfo.findFirst({ where: { monitor_id: monitorID } });
+        let tlsInfo = await prisma.monitorTlsInfo.findFirst({ where: { monitorId: monitorID } });
         if (tlsInfo != null) {
-            io.to(userID).emit("certInfo", monitorID, tlsInfo.info_json);
+            io.to(userID).emit("certInfo", monitorID, tlsInfo.infoJson);
         }
     }
 
@@ -1504,23 +1504,23 @@ class Monitor {
      * Send a notification about a monitor
      * @param {boolean} isFirstBeat Is this beat the first of this monitor?
      * @param {Monitor} monitor The monitor to send a notification about
-     * @param {import("./heartbeat")} bean Status information about monitor
+     * @param {import("./heartbeat")} heartbeat Status information about monitor
      * @returns {Promise<void>}
      */
-    static async sendNotification(isFirstBeat, monitor, bean) {
-        if (!isFirstBeat || bean.status === DOWN) {
+    static async sendNotification(isFirstBeat, monitor, heartbeat) {
+        if (!isFirstBeat || heartbeat.status === DOWN) {
             const notificationList = await Monitor.getNotificationList(monitor);
 
             let text;
-            if (bean.status === UP) {
+            if (heartbeat.status === UP) {
                 text = "✅ Up";
             } else {
                 text = "🔴 Down";
             }
 
-            let msg = `[${monitor.name}] [${text}] ${bean.msg}`;
+            let msg = `[${monitor.name}] [${text}] ${heartbeat.msg}`;
 
-            const heartbeatJSON = await bean.toJSONAsync({ decodeResponse: true });
+            const heartbeatJSON = await heartbeat.toJSONAsync({ decodeResponse: true });
             const monitorData = [{ id: monitor.id, active: monitor.active, name: monitor.name }];
             const preloadData = await Monitor.preparePreloadData(monitorData);
             // Prevent if the msg is undefined, notifications such as Discord cannot send out.
@@ -1538,7 +1538,7 @@ class Monitor {
 
             // Calculate downtime tracking information when service comes back up
             // This makes downtime information available to all notification providers
-            if (bean.status === UP && monitor.id) {
+            if (heartbeat.status === UP && monitor.id) {
                 try {
                     // Filter by important = 1 to get the state transition heartbeat (e.g. UP→DOWN),
                     // not the most recent DOWN heartbeat which would be the last check before recovery.
@@ -1626,7 +1626,7 @@ class Monitor {
 
         if (sent) {
             await prismaNotifHist.notificationSentHistory.create({
-                data: { type: "certificate", monitor_id: this.id, days: targetDays },
+                data: { type: "certificate", monitorId: this.id, days: targetDays },
             });
         }
     }
@@ -1638,7 +1638,7 @@ class Monitor {
      */
     static async getPreviousHeartbeat(monitorID) {
         const prisma = getPrisma();
-        const row = await prisma.heartbeat.findFirst({ where: { monitor_id: monitorID }, orderBy: { id: "desc" } });
+        const row = await prisma.heartbeat.findFirst({ where: { monitorId: monitorID }, orderBy: { id: "desc" } });
         return row ? Object.assign(new Heartbeat(), row) : null;
     }
 
@@ -1687,12 +1687,12 @@ class Monitor {
             throw new Error(`Retry interval cannot be less than ${MIN_INTERVAL_SECOND} seconds`);
         }
 
-        if (this.response_max_length !== undefined) {
-            if (this.response_max_length < 0) {
+        if (this.responseMaxLength !== undefined) {
+            if (this.responseMaxLength < 0) {
                 throw new Error(`Response max length cannot be less than 0`);
             }
 
-            if (this.response_max_length > RESPONSE_BODY_LENGTH_MAX) {
+            if (this.responseMaxLength > RESPONSE_BODY_LENGTH_MAX) {
                 throw new Error(`Response max length cannot be more than ${RESPONSE_BODY_LENGTH_MAX} bytes`);
             }
         }
@@ -1738,9 +1738,9 @@ class Monitor {
             }
         }
 
-        if (this.accepted_statuscodes_json) {
+        if (this.acceptedStatuscodesJson) {
             try {
-                JSON.parse(this.accepted_statuscodes_json);
+                JSON.parse(this.acceptedStatuscodesJson);
             } catch (e) {
                 throw new Error(`Accepted status codes must be valid JSON: ${e.message}`);
             }
@@ -1755,16 +1755,16 @@ class Monitor {
             }
 
             if (
-                this.ping_per_request_timeout &&
-                (this.ping_per_request_timeout < PING_PER_REQUEST_TIMEOUT_MIN ||
-                    this.ping_per_request_timeout > PING_PER_REQUEST_TIMEOUT_MAX)
+                this.pingPerRequestTimeout &&
+                (this.pingPerRequestTimeout < PING_PER_REQUEST_TIMEOUT_MIN ||
+                    this.pingPerRequestTimeout > PING_PER_REQUEST_TIMEOUT_MAX)
             ) {
                 throw new Error(
                     `Per-ping timeout must be between ${PING_PER_REQUEST_TIMEOUT_MIN} and ${PING_PER_REQUEST_TIMEOUT_MAX} seconds (default: ${PING_PER_REQUEST_TIMEOUT_DEFAULT})`
                 );
             }
 
-            if (this.ping_count && (this.ping_count < PING_COUNT_MIN || this.ping_count > PING_COUNT_MAX)) {
+            if (this.pingCount && (this.pingCount < PING_COUNT_MIN || this.pingCount > PING_COUNT_MAX)) {
                 throw new Error(
                     `Echo requests count must be between ${PING_COUNT_MIN} and ${PING_COUNT_MAX} (default: ${PING_COUNT_DEFAULT})`
                 );
@@ -1774,7 +1774,7 @@ class Monitor {
                 const pingGlobalTimeout = Math.round(Number(this.timeout));
 
                 if (
-                    pingGlobalTimeout < this.ping_per_request_timeout ||
+                    pingGlobalTimeout < this.pingPerRequestTimeout ||
                     pingGlobalTimeout < PING_GLOBAL_TIMEOUT_MIN ||
                     pingGlobalTimeout > PING_GLOBAL_TIMEOUT_MAX
                 ) {
@@ -1789,8 +1789,8 @@ class Monitor {
 
         if (this.type === "real-browser") {
             // screenshot_delay validation
-            if (this.screenshot_delay !== undefined && this.screenshot_delay !== null) {
-                const delay = Number(this.screenshot_delay);
+            if (this.screenshotDelay !== undefined && this.screenshotDelay !== null) {
+                const delay = Number(this.screenshotDelay);
                 if (isNaN(delay) || delay < 0) {
                     throw new Error("Screenshot delay must be a non-negative number");
                 }
@@ -2037,7 +2037,7 @@ class Monitor {
 
         // Delete from database
         const prisma = getPrisma();
-        await prisma.monitor.deleteMany({ where: { id: monitorID, user_id: userID } });
+        await prisma.monitor.deleteMany({ where: { id: monitorID, userId: userID } });
     }
 
     /**
@@ -2049,7 +2049,7 @@ class Monitor {
     static async deleteMonitorRecursively(monitorID, userID) {
         // Check if this monitor is a group
         const prisma = getPrisma();
-        const monitor = await prisma.monitor.findFirst({ where: { id: monitorID, user_id: userID } });
+        const monitor = await prisma.monitor.findFirst({ where: { id: monitorID, userId: userID } });
 
         if (monitor && monitor.type === "group") {
             // Get all children and delete them recursively
@@ -2088,12 +2088,12 @@ class Monitor {
     async makeOidcTokenClientCredentialsRequest() {
         log.debug("monitor", `[${this.name}] The oauth access-token undefined or expired. Requesting a new token`);
         const oAuthAccessToken = await getOidcTokenClientCredentials(
-            this.oauth_token_url,
-            this.oauth_client_id,
-            this.oauth_client_secret,
-            this.oauth_scopes,
-            this.oauth_audience,
-            this.oauth_auth_method
+            this.oauthTokenUrl,
+            this.oauthClientId,
+            this.oauthClientSecret,
+            this.oauthScopes,
+            this.oauthAudience,
+            this.oauthAuthMethod
         );
         if (this.oauthAccessToken?.expires_at) {
             log.debug(
