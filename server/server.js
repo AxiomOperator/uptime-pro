@@ -456,7 +456,7 @@ let needSetup = false;
             let user = await login(data.username, data.password);
 
             if (user) {
-                if (user.twofa_status === 0) {
+                if (!user.twofa_status) {
                     await afterLogin(socket, user);
 
                     log.info("auth", `Successfully logged in user ${data.username}. IP=${clientIP}`);
@@ -467,7 +467,7 @@ let needSetup = false;
                     });
                 }
 
-                if (user.twofa_status === 1 && !data.token) {
+                if (user.twofa_status && !data.token) {
                     log.info("auth", `2FA token required for user ${data.username}. IP=${clientIP}`);
 
                     callback({
@@ -535,9 +535,8 @@ let needSetup = false;
 
                 let user = await prisma.user.findFirst({ where: { id: socket.userID, active: true } });
 
-                if (user.twofa_status === 0) {
+                if (!user.twofa_status) {
                     let newSecret = genSecret();
-                    let encodedSecret = base32.encode(newSecret);
 
                     // Google authenticator doesn't like equal signs
                     // The fix is found at https://github.com/guyht/notp
@@ -662,7 +661,7 @@ let needSetup = false;
 
                 let user = await prisma.user.findFirst({ where: { id: socket.userID, active: true } });
 
-                if (user.twofa_status === 1) {
+                if (user.twofa_status) {
                     callback({
                         ok: true,
                         status: true,

@@ -35,8 +35,8 @@ async function sendNotificationList(socket) {
             // ignore parse error
         }
         notificationObject.id = row.id;
-        notificationObject.isDefault = notificationObject.isDefault === 1;
-        notificationObject.active = notificationObject.active === 1;
+        notificationObject.isDefault = !!notificationObject.isDefault;
+        notificationObject.active = !!notificationObject.active;
         result.push(notificationObject);
     }
 
