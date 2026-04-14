@@ -32,24 +32,20 @@ describe("Database Migration", () => {
             useNullAsDefault: true,
         });
 
-        // Setup R (redbean) with knex instance like production code does
-        const { R } = require("redbean-node");
-        R.setup(db);
-
         try {
             // Use production code to initialize SQLite tables (like first run)
             const { createTables } = require("../../db/knex_init_db.js");
-            await createTables();
+            await createTables(db);
 
             // Run all migrations like production code does
-            await R.knex.migrate.latest({
+            await db.migrate.latest({
                 directory: path.join(__dirname, "../../db/knex_migrations"),
             });
 
             // Test passes if migrations complete successfully without errors
         } finally {
             // Clean up
-            await R.knex.destroy();
+            await db.destroy();
             if (fs.existsSync(testDbPath)) {
                 fs.unlinkSync(testDbPath);
             }
@@ -97,17 +93,13 @@ describe("Database Migration", () => {
                 },
             });
 
-            // Setup R (redbean) with knex instance like production code does
-            const { R } = require("redbean-node");
-            R.setup(knexInstance);
-
             try {
                 // Use production code to initialize MariaDB tables
                 const { createTables } = require("../../db/knex_init_db.js");
-                await createTables();
+                await createTables(knexInstance);
 
                 // Run all migrations like production code does
-                await R.knex.migrate.latest({
+                await knexInstance.migrate.latest({
                     directory: path.join(__dirname, "../../db/knex_migrations"),
                 });
 
@@ -115,7 +107,7 @@ describe("Database Migration", () => {
             } finally {
                 // Clean up
                 try {
-                    await R.knex.destroy();
+                    await knexInstance.destroy();
                 } catch (e) {
                     // Ignore cleanup errors
                 }
@@ -156,17 +148,13 @@ describe("Database Migration", () => {
                 },
             });
 
-            // Setup R (redbean) with knex instance like production code does
-            const { R } = require("redbean-node");
-            R.setup(knexInstance);
-
             try {
                 // Use production code to initialize MySQL tables
                 const { createTables } = require("../../db/knex_init_db.js");
-                await createTables();
+                await createTables(knexInstance);
 
                 // Run all migrations like production code does
-                await R.knex.migrate.latest({
+                await knexInstance.migrate.latest({
                     directory: path.join(__dirname, "../../db/knex_migrations"),
                 });
 
@@ -174,7 +162,7 @@ describe("Database Migration", () => {
             } finally {
                 // Clean up
                 try {
-                    await R.knex.destroy();
+                    await knexInstance.destroy();
                 } catch (e) {
                     // Ignore cleanup errors
                 }

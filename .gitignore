@@ -24,3 +24,6 @@ extra/exe-builder/obj
 
 .vs
 .vscode
+
+/src/generated/prisma
+/server/generated/

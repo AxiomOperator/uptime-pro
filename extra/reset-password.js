@@ -1,7 +1,7 @@
-console.log("== Uptime Kuma Reset Password Tool ==");
+console.log("== Uptime Pro Reset Password Tool ==");
 
 const Database = require("../server/database");
-const { R } = require("redbean-node");
+const { getPrisma } = require("../server/prisma");
 const readline = require("readline");
 const { passwordStrength } = require("check-password-strength");
 const { initJWTSecret } = require("../server/util-server");
@@ -27,7 +27,8 @@ const main = async () => {
         await Database.connect(false, false, true);
         // No need to actually reset the password for testing, just make sure no connection problem. It is ok for now.
         if (!process.env.TEST_BACKEND) {
-            const user = await R.findOne("user");
+            const prisma = getPrisma();
+            const user = await prisma.user.findFirst();
             if (!user) {
                 throw new Error("user not found, have you installed?");
             }
@@ -134,7 +135,7 @@ function disconnectAllSocketClients(username, password) {
         });
 
         socket.on("connect_error", function () {
-            // The localWebSocketURL is not guaranteed to be working for some complicated Uptime Kuma setup
+            // The localWebSocketURL is not guaranteed to be working for some complicated setups
             // Ask the user to restart the server manually
             console.warn("Failed to connect to " + localWebSocketURL);
             console.warn("Please restart the server to disconnect all sessions manually.");

@@ -2,8 +2,9 @@ let express = require("express");
 const apicache = require("../modules/apicache");
 const { UptimeKumaServer } = require("../uptime-kuma-server");
 const StatusPage = require("../model/status_page");
+const Heartbeat = require("../model/heartbeat");
 const { allowDevAllOrigin, sendHttpError } = require("../util-server");
-const { R } = require("redbean-node");
+const { getPrisma } = require("../prisma");
 const { badgeConstants } = require("../../src/util");
 const { makeBadge } = require("badge-maker");
 const { UptimeCalculator } = require("../uptime-calculator");
@@ -43,13 +44,15 @@ router.get("/api/status-page/:slug", cache("5 minutes"), async (request, respons
 
     try {
         // Get Status Page
-        let statusPage = await R.findOne("status_page", " slug = ? ", [slug]);
+        const prisma = getPrisma();
+        let row = await prisma.statusPage.findFirst({ where: { slug } });
 
-        if (!statusPage) {
+        if (!row) {
             sendHttpError(response, "Status Page Not Found");
             return null;
         }
 
+        let statusPage = Object.assign(new StatusPage(), row);
         let statusPageData = await StatusPage.getStatusPageData(statusPage);
 
         // Response
@@ -72,28 +75,27 @@ router.get("/api/status-page/heartbeat/:slug", cache("1 minutes"), async (reques
         slug = slug.toLowerCase();
         let statusPageID = await StatusPage.slugToID(slug);
 
-        let monitorIDList = await R.getCol(
-            `
-            SELECT monitor_group.monitor_id FROM monitor_group, \`group\`
-            WHERE monitor_group.group_id = \`group\`.id
-            AND public = 1
-            AND \`group\`.status_page_id = ?
-        `,
-            [statusPageID]
-        );
+        let monitorIDList = await (async () => {
+            const prisma = getPrisma();
+            const rows = await prisma.$queryRaw`
+                SELECT monitor_group.monitor_id FROM monitor_group, \`group\`
+                WHERE monitor_group.group_id = \`group\`.id
+                AND public = 1
+                AND \`group\`.status_page_id = ${statusPageID}
+            `;
+            return rows.map((r) => r.monitor_id);
+        })();
 
         for (let monitorID of monitorIDList) {
-            let list = await R.getAll(
-                `
+            const prisma = getPrisma();
+            let list = await prisma.$queryRaw`
                     SELECT * FROM heartbeat
-                    WHERE monitor_id = ?
+                    WHERE monitor_id = ${monitorID}
                     ORDER BY time DESC
                     LIMIT 100
-            `,
-                [monitorID]
-            );
+            `;
 
-            list = R.convertToBeans("heartbeat", list);
+            list = list.map((r) => Object.assign(new Heartbeat(), r));
             heartbeatList[monitorID] = list.reverse().map((row) => row.toPublicJSON());
 
             const uptimeCalculator = await UptimeCalculator.getUptimeCalculator(monitorID);
@@ -117,12 +119,15 @@ router.get("/api/status-page/:slug/manifest.json", cache("1440 minutes"), async 
 
     try {
         // Get Status Page
-        let statusPage = await R.findOne("status_page", " slug = ? ", [slug]);
+        const prismaStatus = getPrisma();
+        let statusPageRow = await prismaStatus.statusPage.findFirst({ where: { slug } });
 
-        if (!statusPage) {
+        if (!statusPageRow) {
             sendHttpError(response, "Not Found");
             return;
         }
+
+        const statusPage = statusPageRow;
 
         // Response
         response.json({
@@ -182,15 +187,16 @@ router.get("/api/status-page/:slug/badge", cache("5 minutes"), async (request, r
     } = request.query;
 
     try {
-        let monitorIDList = await R.getCol(
-            `
-            SELECT monitor_group.monitor_id FROM monitor_group, \`group\`
-            WHERE monitor_group.group_id = \`group\`.id
-            AND public = 1
-            AND \`group\`.status_page_id = ?
-        `,
-            [statusPageID]
-        );
+        const prisma = getPrisma();
+        let monitorIDList = await (async () => {
+            const rows = await prisma.$queryRaw`
+                SELECT monitor_group.monitor_id FROM monitor_group, \`group\`
+                WHERE monitor_group.group_id = \`group\`.id
+                AND public = 1
+                AND \`group\`.status_page_id = ${statusPageID}
+            `;
+            return rows.map((r) => r.monitor_id);
+        })();
 
         let hasUp = false;
         let hasDown = false;
@@ -198,15 +204,12 @@ router.get("/api/status-page/:slug/badge", cache("5 minutes"), async (request, r
 
         for (let monitorID of monitorIDList) {
             // retrieve the latest heartbeat
-            let beat = await R.getAll(
-                `
+            let beat = await prisma.$queryRaw`
                     SELECT * FROM heartbeat
-                    WHERE monitor_id = ?
+                    WHERE monitor_id = ${monitorID}
                     ORDER BY time DESC
                     LIMIT 1
-            `,
-                [monitorID]
-            );
+            `;
 
             // to be sure, when corresponding monitor not found
             if (beat.length === 0) {

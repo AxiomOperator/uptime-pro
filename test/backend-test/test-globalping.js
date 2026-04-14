@@ -725,9 +725,6 @@ describe("GlobalpingMonitorType", () => {
             mockClient.createMeasurement.mock.mockImplementation(() => createMockResponse(createResponse));
             mockClient.awaitMeasurement.mock.mockImplementation(() => awaitResponse);
 
-            const redbeanMock = createRedbeanMock();
-            redbeanMock.exec.mock.mockImplementation(() => Promise.resolve());
-
             const monitor = {
                 id: "1",
                 hostname: "example.com",
@@ -743,7 +740,7 @@ describe("GlobalpingMonitorType", () => {
                 ping: null,
             };
 
-            await monitorType.dns(mockClient, monitor, heartbeat, false, redbeanMock);
+            await monitorType.dns(mockClient, monitor, heartbeat, false);
 
             assert.strictEqual(mockClient.createMeasurement.mock.calls.length, 1);
             assert.deepStrictEqual(mockClient.createMeasurement.mock.calls[0].arguments[0], {
@@ -764,12 +761,6 @@ describe("GlobalpingMonitorType", () => {
                 msg: "New York (NY), US, NA, MASSIVEGRID (AS49683) : 93.184.216.34",
                 ping: 25,
             });
-
-            assert.strictEqual(redbeanMock.exec.mock.calls.length, 1);
-            assert.deepStrictEqual(redbeanMock.exec.mock.calls[0].arguments, [
-                "UPDATE `monitor` SET dns_last_result = ? WHERE id = ? ",
-                ["93.184.216.34", "1"],
-            ]);
         });
 
         test("should handle failed dns with status failed", async () => {
@@ -899,17 +890,8 @@ describe("GlobalpingMonitorType", () => {
             mockClient.createMeasurement.mock.mockImplementation(() => createMockResponse(createResponse));
             mockClient.awaitMeasurement.mock.mockImplementation(() => awaitResponse);
 
-            const redbeanMock = createRedbeanMock();
-            redbeanMock.exec.mock.mockImplementation(() => Promise.resolve());
-
             const monitor = {
                 id: "1",
-                hostname: "example.com",
-                location: "us-east-1",
-                dns_resolve_type: "A",
-                port: 53,
-                protocol: "udp",
-                keyword: "93\\.184\\.216\\.34",
             };
 
             const heartbeat = {
@@ -918,18 +900,13 @@ describe("GlobalpingMonitorType", () => {
                 ping: null,
             };
 
-            await monitorType.dns(mockClient, monitor, heartbeat, false, redbeanMock);
+            await monitorType.dns(mockClient, monitor, heartbeat, false);
 
             assert.deepStrictEqual(heartbeat, {
                 status: UP,
                 msg: "New York (NY), US, NA, MASSIVEGRID (AS49683) : 93.184.216.34",
                 ping: 25,
             });
-
-            assert.deepStrictEqual(redbeanMock.exec.mock.calls[0].arguments, [
-                "UPDATE `monitor` SET dns_last_result = ? WHERE id = ? ",
-                ["93.184.216.34", "1"],
-            ]);
         });
 
         test("should handle regex not matched", async () => {
@@ -943,9 +920,6 @@ describe("GlobalpingMonitorType", () => {
 
             mockClient.createMeasurement.mock.mockImplementation(() => createMockResponse(createResponse));
             mockClient.awaitMeasurement.mock.mockImplementation(() => awaitResponse);
-
-            const redbeanMock = createRedbeanMock();
-            redbeanMock.exec.mock.mockImplementation(() => Promise.resolve());
 
             const monitor = {
                 id: "1",
@@ -962,18 +936,13 @@ describe("GlobalpingMonitorType", () => {
                 msg: "",
             };
 
-            await assert.rejects(monitorType.dns(mockClient, monitor, heartbeat, false, redbeanMock), (error) => {
+            await assert.rejects(monitorType.dns(mockClient, monitor, heartbeat, false), (error) => {
                 assert.deepStrictEqual(
                     error,
                     new Error("New York (NY), US, NA, MASSIVEGRID (AS49683) : No record matched. 93.184.216.34")
                 );
                 return true;
             });
-
-            assert.deepStrictEqual(redbeanMock.exec.mock.calls[0].arguments, [
-                "UPDATE `monitor` SET dns_last_result = ? WHERE id = ? ",
-                ["93.184.216.34", "1"],
-            ]);
         });
 
         test("should retry create measurement on status 500", async () => {
@@ -994,9 +963,6 @@ describe("GlobalpingMonitorType", () => {
             mockClient.createMeasurement.mock.mockImplementation(() => createMockResponse(createResponse));
             mockClient.awaitMeasurement.mock.mockImplementation(() => awaitResponse);
 
-            const redbeanMock = createRedbeanMock();
-            redbeanMock.exec.mock.mockImplementation(() => Promise.resolve());
-
             const monitor = {
                 id: "1",
                 hostname: "example.com",
@@ -1012,7 +978,7 @@ describe("GlobalpingMonitorType", () => {
                 ping: null,
             };
 
-            await monitorType.dns(mockClient, monitor, heartbeat, false, redbeanMock);
+            await monitorType.dns(mockClient, monitor, heartbeat, false);
 
             const expectedCreateMeasurement = {
                 type: "dns",
@@ -1035,12 +1001,6 @@ describe("GlobalpingMonitorType", () => {
                 msg: "New York (NY), US, NA, MASSIVEGRID (AS49683) : 93.184.216.34",
                 ping: 25,
             });
-
-            assert.strictEqual(redbeanMock.exec.mock.calls.length, 1);
-            assert.deepStrictEqual(redbeanMock.exec.mock.calls[0].arguments, [
-                "UPDATE `monitor` SET dns_last_result = ? WHERE id = ? ",
-                ["93.184.216.34", "1"],
-            ]);
         });
     });
 
@@ -1189,16 +1149,6 @@ function createGlobalpingClientMock() {
     return {
         createMeasurement: mock.fn(),
         awaitMeasurement: mock.fn(),
-    };
-}
-
-/**
- * Reusable mock factory for RedBean
- * @returns {object} Mocked RedBean
- */
-function createRedbeanMock() {
-    return {
-        exec: mock.fn(),
     };
 }
 

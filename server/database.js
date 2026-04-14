@@ -1,6 +1,7 @@
 const fs = require("fs");
 const fsAsync = fs.promises;
-const { R } = require("redbean-node");
+const { getPrisma, disconnectPrisma } = require("./prisma");
+const { Prisma } = require("./generated/prisma");
 const { setSetting, setting } = require("./util-server");
 const { log, sleep } = require("../src/util");
 const knex = require("knex");
@@ -124,6 +125,11 @@ class Database {
     static noReject = true;
 
     static dbConfig = {};
+
+    /**
+     * @type {import("knex").Knex|null}
+     */
+    static knexInstance = null;
 
     static knexMigrationsPath = "./db/knex_migrations";
 
@@ -260,6 +266,11 @@ class Database {
                 fs.copyFileSync(Database.templatePath, Database.sqlitePath);
             }
 
+            // Keep Prisma's DATABASE_URL in sync with the actual SQLite path used by Knex.
+            // This matters for tests that override dataDir via TestDB.
+            process.env.DATABASE_URL = `file:${path.resolve(Database.sqlitePath)}`;
+            await disconnectPrisma();
+
             const Dialect = require("knex/lib/dialects/sqlite3/index.js");
             Dialect.prototype._driver = () => require("@louislam/sqlite3");
 
@@ -370,26 +381,15 @@ class Database {
         }
 
         const knexInstance = knex(config);
-
-        R.setup(knexInstance);
-
-        if (process.env.SQL_LOG === "1") {
-            R.debug(true);
-        }
-
-        // Auto map the model to a bean object
-        R.freeze(true);
-
-        if (autoloadModels) {
-            await R.autoloadModels("./server/model");
-        }
+        Database.knexInstance = knexInstance;
 
         if (dbConfig.type === "sqlite") {
             if (!noLog) {
                 log.debug("db", "SQLite config:");
-                log.debug("db", await R.getAll("PRAGMA journal_mode"));
-                log.debug("db", await R.getAll("PRAGMA cache_size"));
-                log.debug("db", "SQLite Version: " + (await R.getCell("SELECT sqlite_version()")));
+                log.debug("db", await Database.knexInstance.raw("PRAGMA journal_mode"));
+                log.debug("db", await Database.knexInstance.raw("PRAGMA cache_size"));
+                const ver = await Database.knexInstance.raw("SELECT sqlite_version() AS version");
+                log.debug("db", "SQLite Version: " + (ver[0]?.version ?? null));
             }
         } else if (dbConfig.type.endsWith("mariadb")) {
             await this.initMariaDB();
@@ -433,10 +433,10 @@ class Database {
     static async initMariaDB() {
         log.debug("db", "Checking if MariaDB database exists...");
 
-        let hasTable = await R.hasTable("docker_host");
+        let hasTable = await Database.knexInstance.schema.hasTable("docker_host");
         if (!hasTable) {
             const { createTables } = require("../db/knex_init_db");
-            await createTables();
+            await createTables(Database.knexInstance);
         } else {
             log.debug("db", "MariaDB database already exists");
         }
@@ -457,20 +457,28 @@ class Database {
         // Using knex migrations
         // https://knexjs.org/guide/migrations.html
         // https://gist.github.com/NigelEarle/70db130cc040cc2868555b29a0278261
+        let prisma = getPrisma();
         try {
             // Disable foreign key check for SQLite
             // Known issue of knex: https://github.com/drizzle-team/drizzle-orm/issues/1813
             if (Database.dbConfig.type === "sqlite") {
-                await R.exec("PRAGMA foreign_keys = OFF");
+                await prisma.$executeRaw`PRAGMA foreign_keys = OFF`;
             }
 
-            await R.knex.migrate.latest({
+            await Database.knexInstance.migrate.latest({
                 directory: Database.knexMigrationsPath,
             });
 
             // Enable foreign key check for SQLite
             if (Database.dbConfig.type === "sqlite") {
-                await R.exec("PRAGMA foreign_keys = ON");
+                await prisma.$executeRaw`PRAGMA foreign_keys = ON`;
+            }
+
+            // Disconnect Prisma so subsequent queries open a fresh connection
+            // that sees all schema changes committed by knex migrations
+            if (Database.dbConfig.type === "sqlite") {
+                await disconnectPrisma();
+                prisma = getPrisma();
             }
 
             await this.migrateAggregateTable(port, hostname);
@@ -498,7 +506,10 @@ class Database {
      * @deprecated
      */
     static async patchSqlite() {
-        let version = parseInt(await setting("database_version"));
+        // Use knex for legacy DB version reads to avoid Prisma schema mismatch on old DB templates
+        const knex = Database.knexInstance;
+        let versionRow = await knex("setting").where("key", "database_version").first().catch(() => null);
+        let version = parseInt(versionRow ? versionRow.value : 0);
 
         if (!version) {
             version = 0;
@@ -523,7 +534,13 @@ class Database {
                     log.info("db", `Patching ${sqlFile}`);
                     await Database.importSQLFile(sqlFile);
                     log.info("db", `Patched ${sqlFile}`);
-                    await setSetting("database_version", i);
+                    // Use knex directly — Prisma schema may not match the partially-patched DB
+                    const exists = await knex("setting").where("key", "database_version").first().catch(() => null);
+                    if (exists) {
+                        await knex("setting").where("key", "database_version").update({ value: String(i) });
+                    } else {
+                        await knex("setting").insert({ key: "database_version", value: String(i) });
+                    }
                 }
             } catch (ex) {
                 await Database.close();
@@ -540,6 +557,10 @@ class Database {
         }
 
         await this.patchSqlite2();
+
+        // Disconnect Prisma so it opens a fresh connection after the legacy patches
+        await disconnectPrisma();
+
         await this.migrateNewStatusPage();
     }
 
@@ -552,7 +573,17 @@ class Database {
      */
     static async patchSqlite2() {
         log.debug("db", "Database Patch 2.0 Process");
-        let databasePatchedFiles = await setting("databasePatchedFiles");
+        // Use knex for legacy reads to avoid Prisma schema mismatch during intermediate patch states
+        const knex = Database.knexInstance;
+        const patchedRow = await knex("setting").where("key", "databasePatchedFiles").first().catch(() => null);
+        let databasePatchedFiles = null;
+        if (patchedRow) {
+            try {
+                databasePatchedFiles = JSON.parse(patchedRow.value);
+            } catch (_) {
+                databasePatchedFiles = null;
+            }
+        }
 
         if (!databasePatchedFiles) {
             databasePatchedFiles = {};
@@ -582,7 +613,14 @@ class Database {
             process.exit(1);
         }
 
-        await setSetting("databasePatchedFiles", databasePatchedFiles);
+        // Use knex directly for the same reason
+        const exists = await knex("setting").where("key", "databasePatchedFiles").first().catch(() => null);
+        const serialized = JSON.stringify(databasePatchedFiles);
+        if (exists) {
+            await knex("setting").where("key", "databasePatchedFiles").update({ value: serialized });
+        } else {
+            await knex("setting").insert({ key: "databasePatchedFiles", value: serialized });
+        }
     }
 
     /**
@@ -591,22 +629,30 @@ class Database {
      * @returns {Promise<void>}
      */
     static async migrateNewStatusPage() {
-        // Fix 1.13.0 empty slug bug
-        await R.exec("UPDATE status_page SET slug = 'empty-slug-recover' WHERE TRIM(slug) = ''");
+        const prisma = getPrisma();
+        // Fix 1.13.0 empty slug bug — skip gracefully if status_page doesn't exist yet
+        try {
+            await prisma.$executeRaw`UPDATE status_page SET slug = 'empty-slug-recover' WHERE TRIM(slug) = ''`;
+        } catch (e) {
+            if (e.message && e.message.includes("no such table")) {
+                return;
+            }
+            throw e;
+        }
 
         let title = await setting("title");
 
         if (title) {
             log.info("database", "Migrating Status Page");
 
-            let statusPageCheck = await R.findOne("status_page", " slug = 'default' ");
+            let statusPageCheck = await prisma.statusPage.findFirst({ where: { slug: "default" } });
 
             if (statusPageCheck !== null) {
                 log.info("database", "Migrating Status Page - Skip, default slug record is already existing");
                 return;
             }
 
-            let statusPage = R.dispense("status_page");
+            let statusPage = {};
             statusPage.slug = "default";
             statusPage.title = title;
             statusPage.description = await setting("description");
@@ -629,13 +675,26 @@ class Database {
                 statusPage.theme = "light";
             }
 
-            let id = await R.store(statusPage);
+            const newStatusPage = await prisma.statusPage.create({
+                data: {
+                    slug: statusPage.slug,
+                    title: statusPage.title,
+                    description: statusPage.description,
+                    icon: statusPage.icon,
+                    theme: statusPage.theme,
+                    published: statusPage.published,
+                    search_engine_index: statusPage.search_engine_index,
+                    show_tags: statusPage.show_tags,
+                    password: statusPage.password,
+                },
+            });
+            const id = newStatusPage.id;
 
-            await R.exec("UPDATE incident SET status_page_id = ? WHERE status_page_id IS NULL", [id]);
+            await prisma.$executeRaw`UPDATE incident SET status_page_id = ${id} WHERE status_page_id IS NULL`;
 
-            await R.exec("UPDATE [group] SET status_page_id = ? WHERE status_page_id IS NULL", [id]);
+            await prisma.$executeRaw(Prisma.sql`UPDATE ${Prisma.raw("[group]")} SET status_page_id = ${id} WHERE status_page_id IS NULL`);
 
-            await R.exec("DELETE FROM setting WHERE type = 'statusPage'");
+            await prisma.$executeRaw`DELETE FROM setting WHERE type = 'statusPage'`;
 
             // Migrate Entry Page if it is status page
             let entryPage = await setting("entryPage");
@@ -691,8 +750,8 @@ class Database {
      * @returns {Promise<void>}
      */
     static async importSQLFile(filename) {
-        // Sadly, multi sql statements is not supported by many sqlite libraries, I have to implement it myself
-        await R.getCell("SELECT 1");
+        // Use knex raw for legacy SQL patch files which may contain explicit BEGIN/COMMIT transactions
+        const knex = Database.knexInstance;
 
         let text = fs.readFileSync(filename).toString();
 
@@ -716,7 +775,7 @@ class Database {
             });
 
         for (let statement of statements) {
-            await R.exec(statement);
+            await knex.raw(statement);
         }
     }
 
@@ -732,14 +791,16 @@ class Database {
 
         log.info("db", "Closing the database");
 
+        const prisma = getPrisma();
         // Flush WAL to main database
         if (Database.dbConfig.type === "sqlite") {
-            await R.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+            await prisma.$executeRaw`PRAGMA wal_checkpoint(TRUNCATE)`;
         }
 
+        await disconnectPrisma();
         while (true) {
             Database.noReject = true;
-            await R.close();
+            await Database.knexInstance.destroy();
             await sleep(2000);
 
             if (Database.noReject) {
@@ -772,8 +833,9 @@ class Database {
      * @returns {Promise<void>}
      */
     static async shrink() {
+        const prisma = getPrisma();
         if (Database.dbConfig.type === "sqlite") {
-            await R.exec("VACUUM");
+            await prisma.$executeRaw`VACUUM`;
         }
     }
 
@@ -840,15 +902,16 @@ class Database {
         log.info("db", "Getting list of unique monitors");
 
         // Get a list of unique monitors from the heartbeat table, using raw sql
-        let monitors = await R.getAll(`
+        const prisma = getPrisma();
+        let monitors = await prisma.$queryRaw`
             SELECT DISTINCT monitor_id
             FROM heartbeat
             ORDER BY monitor_id ASC
-        `);
+        `;
 
         // Stop if stat_* tables are not empty
         for (let table of ["stat_minutely", "stat_hourly", "stat_daily"]) {
-            let countResult = await R.getRow(`SELECT COUNT(*) AS count FROM ${table}`);
+            let countResult = (await prisma.$queryRaw(Prisma.sql`SELECT COUNT(*) AS count FROM ${Prisma.raw(table)}`))[0] ?? null;
             let count = countResult.count;
             if (count > 0) {
                 log.warn(
@@ -865,15 +928,12 @@ class Database {
         let progressPercent = 0;
         for (const [i, monitor] of monitors.entries()) {
             // Get a list of unique dates from the heartbeat table, using raw sql
-            let dates = await R.getAll(
-                `
+            let dates = await prisma.$queryRaw`
                 SELECT DISTINCT DATE(time) AS date
                 FROM heartbeat
-                WHERE monitor_id = ?
+                WHERE monitor_id = ${monitor.monitor_id}
                 ORDER BY date ASC
-            `,
-                [monitor.monitor_id]
-            );
+            `;
 
             for (const [dateIndex, date] of dates.entries()) {
                 // New Uptime Calculator
@@ -882,16 +942,13 @@ class Database {
                 calculator.setMigrationMode(true);
 
                 // Get all the heartbeats for this monitor and date
-                let heartbeats = await R.getAll(
-                    `
+                let heartbeats = await prisma.$queryRaw`
                     SELECT status, ping, time
                     FROM heartbeat
-                    WHERE monitor_id = ?
-                    AND DATE(time) = ?
+                    WHERE monitor_id = ${monitor.monitor_id}
+                    AND DATE(time) = ${date.date}
                     ORDER BY time ASC
-                `,
-                    [monitor.monitor_id, date.date]
-                );
+                `;
 
                 if (heartbeats.length > 0) {
                     msg = `[DON'T STOP] Migrating monitor ${monitor.monitor_id}s' (${i + 1} of ${monitors.length} total) data - ${date.date} - total migration progress ${progressPercent.toFixed(2)}%`;
@@ -934,16 +991,16 @@ class Database {
      * @returns {Promise<void>}
      */
     static async clearHeartbeatData(detailedLog = false) {
-        let monitors = await R.getAll("SELECT id FROM monitor");
+        const prisma = getPrisma();
+        let monitors = await prisma.$queryRaw`SELECT id FROM monitor`;
         const sqlHourOffset = Database.sqlHourOffset();
 
         for (let monitor of monitors) {
             if (detailedLog) {
                 log.info("db", "Deleting non-important heartbeats for monitor " + monitor.id);
             }
-            await R.exec(
-                `
-                DELETE FROM heartbeat
+            await prisma.$executeRawUnsafe(
+                `DELETE FROM heartbeat
                 WHERE monitor_id = ?
                 AND important = 0
                 AND time < ${sqlHourOffset}
@@ -955,9 +1012,8 @@ class Database {
                         ORDER BY time DESC
                         LIMIT ?
                     )  AS limited_ids
-                )
-            `,
-                [monitor.id, -24, monitor.id, 100]
+                )`,
+                monitor.id, -24, monitor.id, 100
             );
         }
     }

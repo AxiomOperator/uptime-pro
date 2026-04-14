@@ -5,6 +5,12 @@
  */
 console.log("Welcome to Uptime Pro");
 
+// Prisma $queryRaw returns BigInt for integer columns in SQLite.
+// JSON.stringify cannot serialize BigInt by default, which crashes Socket.IO emit.
+BigInt.prototype.toJSON = function () {
+    return Number(this);
+};
+
 // As the log function need to use dayjs, it should be very top
 const dayjs = require("dayjs");
 dayjs.extend(require("dayjs/plugin/utc"));
@@ -77,8 +83,11 @@ log.info("server", "Loading modules");
 log.debug("server", "Importing express");
 const express = require("express");
 const expressStaticGzip = require("express-static-gzip");
-log.debug("server", "Importing redbean-node");
-const { R } = require("redbean-node");
+const { getPrisma } = require("./prisma");
+// NOTE: Do not call getPrisma() at module level — it creates a Prisma connection before
+// the DB migrations run. Use getPrisma() inside functions instead.
+// The module-level variable is kept for compatibility but lazy-initialized after DB init.
+let prisma = null;
 log.debug("server", "Importing jsonwebtoken");
 const jwt = require("jsonwebtoken");
 log.debug("server", "Importing http-graceful-shutdown");
@@ -225,6 +234,7 @@ let needSetup = false;
         await initDatabase(testMode);
     } catch (e) {
         log.error("server", "Failed to prepare your database: " + e.message);
+        log.error("server", e.stack);
         process.exit(1);
     }
 
@@ -390,7 +400,7 @@ let needSetup = false;
 
                 log.info("auth", "Username from JWT: " + decoded.username);
 
-                let user = await R.findOne("user", " username = ? AND active = 1 ", [decoded.username]);
+                let user = await prisma.user.findFirst({ where: { username: decoded.username, active: true } });
 
                 if (user) {
                     // Check if the password changed
@@ -452,7 +462,7 @@ let needSetup = false;
             let user = await login(data.username, data.password);
 
             if (user) {
-                if (user.twofa_status === 0) {
+                if (!user.twofa_status) {
                     await afterLogin(socket, user);
 
                     log.info("auth", `Successfully logged in user ${data.username}. IP=${clientIP}`);
@@ -463,7 +473,7 @@ let needSetup = false;
                     });
                 }
 
-                if (user.twofa_status === 1 && !data.token) {
+                if (user.twofa_status && !data.token) {
                     log.info("auth", `2FA token required for user ${data.username}. IP=${clientIP}`);
 
                     callback({
@@ -477,10 +487,7 @@ let needSetup = false;
                     if (user.twofa_last_token !== data.token && verify) {
                         await afterLogin(socket, user);
 
-                        await R.exec("UPDATE `user` SET twofa_last_token = ? WHERE id = ? ", [
-                            data.token,
-                            socket.userID,
-                        ]);
+                        await prisma.$executeRaw`UPDATE \`user\` SET twofa_last_token = ${data.token} WHERE id = ${socket.userID}`;
 
                         log.info("auth", `Successfully logged in user ${data.username}. IP=${clientIP}`);
 
@@ -532,9 +539,9 @@ let needSetup = false;
                 checkLogin(socket);
                 await doubleCheckPassword(socket, currentPassword);
 
-                let user = await R.findOne("user", " id = ? AND active = 1 ", [socket.userID]);
+                let user = await prisma.user.findFirst({ where: { id: socket.userID, active: true } });
 
-                if (user.twofa_status === 0) {
+                if (!user.twofa_status) {
                     let newSecret = genSecret();
                     let encodedSecret = base32.encode(newSecret);
 
@@ -543,9 +550,9 @@ let needSetup = false;
                     // Related issue: https://github.com/louislam/uptime-kuma/issues/486
                     encodedSecret = encodedSecret.toString().replace(/=/g, "");
 
-                    let uri = `otpauth://totp/Uptime%20Kuma:${user.username}?secret=${encodedSecret}`;
+                    let uri = `otpauth://totp/Uptime%20Pro:${user.username}?secret=${encodedSecret}`;
 
-                    await R.exec("UPDATE `user` SET twofa_secret = ? WHERE id = ? ", [newSecret, socket.userID]);
+                    await prisma.$executeRaw`UPDATE \`user\` SET twofa_secret = ${newSecret} WHERE id = ${socket.userID}`;
 
                     callback({
                         ok: true,
@@ -577,7 +584,7 @@ let needSetup = false;
                 checkLogin(socket);
                 await doubleCheckPassword(socket, currentPassword);
 
-                await R.exec("UPDATE `user` SET twofa_status = 1 WHERE id = ? ", [socket.userID]);
+                await prisma.$executeRaw`UPDATE \`user\` SET twofa_status = 1 WHERE id = ${socket.userID}`;
 
                 log.info("auth", `Saved 2FA token. IP=${clientIP}`);
 
@@ -630,7 +637,7 @@ let needSetup = false;
                 checkLogin(socket);
                 await doubleCheckPassword(socket, currentPassword);
 
-                let user = await R.findOne("user", " id = ? AND active = 1 ", [socket.userID]);
+                let user = await prisma.user.findFirst({ where: { id: socket.userID, active: true } });
 
                 let verify = notp.totp.verify(token, user.twofa_secret, twoFAVerifyOptions);
 
@@ -659,9 +666,9 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
-                let user = await R.findOne("user", " id = ? AND active = 1 ", [socket.userID]);
+                let user = await prisma.user.findFirst({ where: { id: socket.userID, active: true } });
 
-                if (user.twofa_status === 1) {
+                if (user.twofa_status) {
                     callback({
                         ok: true,
                         status: true,
@@ -690,16 +697,14 @@ let needSetup = false;
                     throw new TranslatableError("passwordTooWeak");
                 }
 
-                if ((await R.knex("user").count("id as count").first()).count !== 0) {
+                if ((await prisma.user.count()) !== 0) {
                     throw new Error(
                         "Uptime Pro has been initialized. If you want to run setup again, please delete the database."
                     );
                 }
 
-                let user = R.dispense("user");
-                user.username = username;
-                user.password = await passwordHash.generate(password);
-                await R.store(user);
+                const hashedPassword = await passwordHash.generate(password);
+                await prisma.user.create({ data: { username: username, password: hashedPassword } });
 
                 needSetup = false;
 
@@ -725,7 +730,7 @@ let needSetup = false;
         socket.on("add", async (monitor, callback) => {
             try {
                 checkLogin(socket);
-                let bean = R.dispense("monitor");
+                let monitorData = new Monitor();
 
                 let notificationIDList = monitor.notificationIDList;
                 delete monitor.notificationIDList;
@@ -759,32 +764,62 @@ let needSetup = false;
                     }
                 }
 
-                bean.import(monitor);
-                // Map camelCase frontend property to snake_case database column
-                if (monitor.retryOnlyOnStatusCodeFailure !== undefined) {
-                    bean.retry_only_on_status_code_failure = monitor.retryOnlyOnStatusCodeFailure;
+                // Map snake_case frontend fields to camelCase Prisma fields
+                const snakeToCamelMap = {
+                    accepted_statuscodes_json: "acceptedStatuscodesJson",
+                    dns_resolve_type: "dnsResolveType",
+                    dns_resolve_server: "dnsResolveServer",
+                    docker_container: "dockerContainer",
+                    docker_host: "dockerHost",
+                    basic_auth_user: "basicAuthUser",
+                    basic_auth_pass: "basicAuthPass",
+                    oauth_client_id: "oauthClientId",
+                    oauth_client_secret: "oauthClientSecret",
+                    oauth_auth_method: "oauthAuthMethod",
+                    oauth_token_url: "oauthTokenUrl",
+                    oauth_scopes: "oauthScopes",
+                    oauth_audience: "oauthAudience",
+                    remote_browser: "remoteBrowser",
+                    manual_status: "manualStatus",
+                    system_service_name: "systemServiceName",
+                    ping_numeric: "pingNumeric",
+                    ping_count: "pingCount",
+                    ping_per_request_timeout: "pingPerRequestTimeout",
+                    screenshot_delay: "screenshotDelay",
+                };
+                for (const [ snakeKey, camelKey ] of Object.entries(snakeToCamelMap)) {
+                    if (snakeKey in monitor) {
+                        monitor[camelKey] = monitor[snakeKey];
+                        delete monitor[snakeKey];
+                    }
                 }
-                bean.user_id = socket.userID;
 
-                bean.validate();
+                Object.assign(monitorData, monitor);
+                monitorData.userId = socket.userID;
 
-                await R.store(bean);
+                monitorData.validate();
 
-                await updateMonitorNotification(bean.id, notificationIDList);
+                const prismaData = { ...monitorData };
+                delete prismaData._meta;
+                delete prismaData.id;
+                const createdMonitor = await prisma.monitor.create({ data: prismaData });
+                monitorData.id = createdMonitor.id;
 
-                await server.sendUpdateMonitorIntoList(socket, bean.id);
+                await updateMonitorNotification(monitorData.id, notificationIDList);
+
+                await server.sendUpdateMonitorIntoList(socket, monitorData.id);
 
                 if (monitor.active !== false) {
-                    await startMonitor(socket.userID, bean.id);
+                    await startMonitor(socket.userID, monitorData.id);
                 }
 
-                log.info("monitor", `Added Monitor: ${bean.id} User ID: ${socket.userID}`);
+                log.info("monitor", `Added Monitor: ${monitorData.id} User ID: ${socket.userID}`);
 
                 callback({
                     ok: true,
                     msg: "successAdded",
                     msgi18n: true,
-                    monitorID: bean.id,
+                    monitorID: monitorData.id,
                 });
             } catch (e) {
                 log.error("monitor", `Error adding Monitor: ${monitor.id} User ID: ${socket.userID}`);
@@ -802,9 +837,10 @@ let needSetup = false;
                 let removeGroupChildren = false;
                 checkLogin(socket);
 
-                let bean = await R.findOne("monitor", " id = ? ", [monitor.id]);
+                let monitorData = await prisma.monitor.findFirst({ where: { id: monitor.id } });
+                monitorData = Object.assign(new Monitor(), monitorData);
 
-                if (bean.user_id !== socket.userID) {
+                if (monitorData.userId !== socket.userID) {
                     throw new Error("Permission denied.");
                 }
 
@@ -817,7 +853,7 @@ let needSetup = false;
                 }
 
                 // Remove children if monitor type has changed (from group to non-group)
-                if (bean.type === "group" && monitor.type !== bean.type) {
+                if (monitorData.type === "group" && monitor.type !== monitorData.type) {
                     removeGroupChildren = true;
                 }
 
@@ -826,138 +862,141 @@ let needSetup = false;
                     throw new Error("Accepted status codes are not all strings");
                 }
 
-                bean.name = monitor.name;
-                bean.description = monitor.description;
-                bean.parent = monitor.parent;
-                bean.type = monitor.type;
-                bean.subtype = monitor.subtype;
-                bean.url = monitor.url;
-                bean.wsIgnoreSecWebsocketAcceptHeader = monitor.wsIgnoreSecWebsocketAcceptHeader;
-                bean.wsSubprotocol = monitor.wsSubprotocol;
-                bean.method = monitor.method;
-                bean.body = monitor.body;
-                bean.ipFamily = monitor.ipFamily;
-                bean.headers = monitor.headers;
-                bean.basic_auth_user = monitor.basic_auth_user;
-                bean.basic_auth_pass = monitor.basic_auth_pass;
-                bean.timeout = monitor.timeout;
-                bean.oauth_client_id = monitor.oauth_client_id;
-                bean.oauth_client_secret = monitor.oauth_client_secret;
-                bean.oauth_auth_method = monitor.oauth_auth_method;
-                bean.oauth_token_url = monitor.oauth_token_url;
-                bean.oauth_scopes = monitor.oauth_scopes;
-                bean.oauth_audience = monitor.oauth_audience;
-                bean.tlsCa = monitor.tlsCa;
-                bean.tlsCert = monitor.tlsCert;
-                bean.tlsKey = monitor.tlsKey;
-                bean.interval = monitor.interval;
-                bean.retryInterval = monitor.retryInterval;
-                bean.resendInterval = monitor.resendInterval;
-                bean.hostname = monitor.hostname;
-                bean.game = monitor.game;
-                bean.maxretries = monitor.maxretries;
-                bean.port = parseInt(monitor.port);
-                bean.location = monitor.location;
-                bean.protocol = monitor.protocol;
+                monitorData.name = monitor.name;
+                monitorData.description = monitor.description;
+                monitorData.parent = monitor.parent;
+                monitorData.type = monitor.type;
+                monitorData.subtype = monitor.subtype;
+                monitorData.url = monitor.url;
+                monitorData.wsIgnoreSecWebsocketAcceptHeader = monitor.wsIgnoreSecWebsocketAcceptHeader;
+                monitorData.wsSubprotocol = monitor.wsSubprotocol;
+                monitorData.method = monitor.method;
+                monitorData.body = monitor.body;
+                monitorData.ipFamily = monitor.ipFamily;
+                monitorData.headers = monitor.headers;
+                monitorData.basicAuthUser = monitor.basic_auth_user;
+                monitorData.basicAuthPass = monitor.basic_auth_pass;
+                monitorData.timeout = monitor.timeout;
+                monitorData.oauthClientId = monitor.oauth_client_id;
+                monitorData.oauthClientSecret = monitor.oauth_client_secret;
+                monitorData.oauthAuthMethod = monitor.oauth_auth_method;
+                monitorData.oauthTokenUrl = monitor.oauth_token_url;
+                monitorData.oauthScopes = monitor.oauth_scopes;
+                monitorData.oauthAudience = monitor.oauth_audience;
+                monitorData.tlsCa = monitor.tlsCa;
+                monitorData.tlsCert = monitor.tlsCert;
+                monitorData.tlsKey = monitor.tlsKey;
+                monitorData.interval = monitor.interval;
+                monitorData.retryInterval = monitor.retryInterval;
+                monitorData.resendInterval = monitor.resendInterval;
+                monitorData.hostname = monitor.hostname;
+                monitorData.game = monitor.game;
+                monitorData.maxretries = monitor.maxretries;
+                monitorData.port = parseInt(monitor.port);
+                monitorData.location = monitor.location;
+                monitorData.protocol = monitor.protocol;
 
-                if (isNaN(bean.port)) {
-                    bean.port = null;
+                if (isNaN(monitorData.port)) {
+                    monitorData.port = null;
                 }
 
-                bean.keyword = monitor.keyword;
-                bean.invertKeyword = monitor.invertKeyword;
-                bean.ignoreTls = monitor.ignoreTls;
-                bean.expiryNotification = monitor.expiryNotification;
-                bean.domainExpiryNotification = monitor.domainExpiryNotification;
-                bean.upsideDown = monitor.upsideDown;
-                bean.packetSize = monitor.packetSize;
-                bean.maxredirects = monitor.maxredirects;
-                bean.accepted_statuscodes_json = JSON.stringify(monitor.accepted_statuscodes);
-                bean.save_response = monitor.saveResponse;
-                bean.save_error_response = monitor.saveErrorResponse;
-                bean.response_max_length = monitor.responseMaxLength;
-                bean.dns_resolve_type = monitor.dns_resolve_type;
-                bean.dns_resolve_server = monitor.dns_resolve_server;
-                bean.pushToken = monitor.pushToken;
-                bean.docker_container = monitor.docker_container;
-                bean.docker_host = monitor.docker_host;
-                bean.proxyId = Number.isInteger(monitor.proxyId) ? monitor.proxyId : null;
-                bean.mqttUsername = monitor.mqttUsername;
-                bean.mqttPassword = monitor.mqttPassword;
-                bean.mqttTopic = monitor.mqttTopic;
-                bean.mqttSuccessMessage = monitor.mqttSuccessMessage;
-                bean.mqttCheckType = monitor.mqttCheckType;
-                bean.mqttWebsocketPath = monitor.mqttWebsocketPath;
-                bean.databaseConnectionString = monitor.databaseConnectionString;
-                bean.databaseQuery = monitor.databaseQuery;
-                bean.authMethod = monitor.authMethod;
-                bean.authWorkstation = monitor.authWorkstation;
-                bean.authDomain = monitor.authDomain;
-                bean.grpcUrl = monitor.grpcUrl;
-                bean.grpcProtobuf = monitor.grpcProtobuf;
-                bean.grpcServiceName = monitor.grpcServiceName;
-                bean.grpcMethod = monitor.grpcMethod;
-                bean.grpcBody = monitor.grpcBody;
-                bean.grpcMetadata = monitor.grpcMetadata;
-                bean.grpcEnableTls = monitor.grpcEnableTls;
-                bean.radiusUsername = monitor.radiusUsername;
-                bean.radiusPassword = monitor.radiusPassword;
-                bean.radiusCalledStationId = monitor.radiusCalledStationId;
-                bean.radiusCallingStationId = monitor.radiusCallingStationId;
-                bean.radiusSecret = monitor.radiusSecret;
-                bean.httpBodyEncoding = monitor.httpBodyEncoding;
-                bean.expectedValue = monitor.expectedValue;
-                bean.jsonPath = monitor.jsonPath;
-                bean.kafkaProducerTopic = monitor.kafkaProducerTopic;
-                bean.kafkaProducerBrokers = JSON.stringify(monitor.kafkaProducerBrokers);
-                bean.kafkaProducerAllowAutoTopicCreation = monitor.kafkaProducerAllowAutoTopicCreation;
-                bean.kafkaProducerSaslOptions = JSON.stringify(monitor.kafkaProducerSaslOptions);
-                bean.kafkaProducerMessage = monitor.kafkaProducerMessage;
-                bean.cacheBust = monitor.cacheBust;
-                bean.kafkaProducerSsl = monitor.kafkaProducerSsl;
-                bean.kafkaProducerAllowAutoTopicCreation = monitor.kafkaProducerAllowAutoTopicCreation;
-                bean.gamedigGivenPortOnly = monitor.gamedigGivenPortOnly;
-                bean.remote_browser = monitor.remote_browser;
-                bean.smtpSecurity = monitor.smtpSecurity;
-                bean.snmpVersion = monitor.snmpVersion;
-                bean.snmpOid = monitor.snmpOid;
-                bean.jsonPathOperator = monitor.jsonPathOperator;
-                bean.retry_only_on_status_code_failure = Boolean(monitor.retryOnlyOnStatusCodeFailure);
-                bean.timeout = monitor.timeout;
-                bean.rabbitmqNodes = JSON.stringify(monitor.rabbitmqNodes);
-                bean.rabbitmqUsername = monitor.rabbitmqUsername;
-                bean.rabbitmqPassword = monitor.rabbitmqPassword;
-                bean.conditions = JSON.stringify(monitor.conditions);
-                bean.manual_status = monitor.manual_status;
-                bean.system_service_name = monitor.system_service_name;
-                bean.expected_tls_alert = monitor.expectedTlsAlert;
+                monitorData.keyword = monitor.keyword;
+                monitorData.invertKeyword = monitor.invertKeyword;
+                monitorData.ignoreTls = monitor.ignoreTls;
+                monitorData.expiryNotification = monitor.expiryNotification;
+                monitorData.domainExpiryNotification = monitor.domainExpiryNotification;
+                monitorData.upsideDown = monitor.upsideDown;
+                monitorData.packetSize = monitor.packetSize;
+                monitorData.maxredirects = monitor.maxredirects;
+                monitorData.acceptedStatuscodesJson = JSON.stringify(monitor.accepted_statuscodes);
+                monitorData.saveResponse = monitor.saveResponse;
+                monitorData.saveErrorResponse = monitor.saveErrorResponse;
+                monitorData.responseMaxLength = monitor.responseMaxLength;
+                monitorData.dnsResolveType = monitor.dns_resolve_type;
+                monitorData.dnsResolveServer = monitor.dns_resolve_server;
+                monitorData.pushToken = monitor.pushToken;
+                monitorData.dockerContainer = monitor.docker_container;
+                monitorData.dockerHost = monitor.docker_host;
+                monitorData.proxyId = Number.isInteger(monitor.proxyId) ? monitor.proxyId : null;
+                monitorData.mqttUsername = monitor.mqttUsername;
+                monitorData.mqttPassword = monitor.mqttPassword;
+                monitorData.mqttTopic = monitor.mqttTopic;
+                monitorData.mqttSuccessMessage = monitor.mqttSuccessMessage;
+                monitorData.mqttCheckType = monitor.mqttCheckType;
+                monitorData.mqttWebsocketPath = monitor.mqttWebsocketPath;
+                monitorData.databaseConnectionString = monitor.databaseConnectionString;
+                monitorData.databaseQuery = monitor.databaseQuery;
+                monitorData.authMethod = monitor.authMethod;
+                monitorData.authWorkstation = monitor.authWorkstation;
+                monitorData.authDomain = monitor.authDomain;
+                monitorData.grpcUrl = monitor.grpcUrl;
+                monitorData.grpcProtobuf = monitor.grpcProtobuf;
+                monitorData.grpcServiceName = monitor.grpcServiceName;
+                monitorData.grpcMethod = monitor.grpcMethod;
+                monitorData.grpcBody = monitor.grpcBody;
+                monitorData.grpcMetadata = monitor.grpcMetadata;
+                monitorData.grpcEnableTls = monitor.grpcEnableTls;
+                monitorData.radiusUsername = monitor.radiusUsername;
+                monitorData.radiusPassword = monitor.radiusPassword;
+                monitorData.radiusCalledStationId = monitor.radiusCalledStationId;
+                monitorData.radiusCallingStationId = monitor.radiusCallingStationId;
+                monitorData.radiusSecret = monitor.radiusSecret;
+                monitorData.httpBodyEncoding = monitor.httpBodyEncoding;
+                monitorData.expectedValue = monitor.expectedValue;
+                monitorData.jsonPath = monitor.jsonPath;
+                monitorData.kafkaProducerTopic = monitor.kafkaProducerTopic;
+                monitorData.kafkaProducerBrokers = JSON.stringify(monitor.kafkaProducerBrokers);
+                monitorData.kafkaProducerAllowAutoTopicCreation = monitor.kafkaProducerAllowAutoTopicCreation;
+                monitorData.kafkaProducerSaslOptions = JSON.stringify(monitor.kafkaProducerSaslOptions);
+                monitorData.kafkaProducerMessage = monitor.kafkaProducerMessage;
+                monitorData.cacheBust = monitor.cacheBust;
+                monitorData.kafkaProducerSsl = monitor.kafkaProducerSsl;
+                monitorData.kafkaProducerAllowAutoTopicCreation = monitor.kafkaProducerAllowAutoTopicCreation;
+                monitorData.gamedigGivenPortOnly = monitor.gamedigGivenPortOnly;
+                monitorData.remoteBrowser = monitor.remote_browser;
+                monitorData.smtpSecurity = monitor.smtpSecurity;
+                monitorData.snmpVersion = monitor.snmpVersion;
+                monitorData.snmpOid = monitor.snmpOid;
+                monitorData.jsonPathOperator = monitor.jsonPathOperator;
+                monitorData.retryOnlyOnStatusCodeFailure = Boolean(monitor.retryOnlyOnStatusCodeFailure);
+                monitorData.timeout = monitor.timeout;
+                monitorData.rabbitmqNodes = JSON.stringify(monitor.rabbitmqNodes);
+                monitorData.rabbitmqUsername = monitor.rabbitmqUsername;
+                monitorData.rabbitmqPassword = monitor.rabbitmqPassword;
+                monitorData.conditions = JSON.stringify(monitor.conditions);
+                monitorData.manualStatus = monitor.manual_status;
+                monitorData.systemServiceName = monitor.system_service_name;
+                monitorData.expectedTlsAlert = monitor.expectedTlsAlert;
 
                 // ping advanced options
-                bean.ping_numeric = monitor.ping_numeric;
-                bean.ping_count = monitor.ping_count;
-                bean.ping_per_request_timeout = monitor.ping_per_request_timeout;
+                monitorData.pingNumeric = monitor.ping_numeric;
+                monitorData.pingCount = monitor.ping_count;
+                monitorData.pingPerRequestTimeout = monitor.ping_per_request_timeout;
 
-                bean.validate();
+                monitorData.validate();
 
-                await R.store(bean);
+                const updateData = { ...monitorData };
+                delete updateData.id;
+                delete updateData._meta;
+                await prisma.monitor.update({ where: { id: monitorData.id }, data: updateData });
 
                 if (removeGroupChildren) {
                     await Monitor.unlinkAllChildren(monitor.id);
                 }
 
-                await updateMonitorNotification(bean.id, monitor.notificationIDList);
+                await updateMonitorNotification(monitorData.id, monitor.notificationIDList);
 
-                if (await Monitor.isActive(bean.id, bean.active)) {
-                    await restartMonitor(socket.userID, bean.id);
+                if (await Monitor.isActive(monitorData.id, monitorData.active)) {
+                    await restartMonitor(socket.userID, monitorData.id);
                 }
 
-                await server.sendUpdateMonitorIntoList(socket, bean.id);
+                await server.sendUpdateMonitorIntoList(socket, monitorData.id);
 
                 callback({
                     ok: true,
                     msg: "Saved.",
                     msgi18n: true,
-                    monitorID: bean.id,
+                    monitorID: monitorData.id,
                 });
             } catch (e) {
                 log.error("monitor", e);
@@ -990,7 +1029,8 @@ let needSetup = false;
 
                 log.info("monitor", `Get Monitor: ${monitorID} User ID: ${socket.userID}`);
 
-                let monitor = await R.findOne("monitor", " id = ? AND user_id = ? ", [monitorID, socket.userID]);
+                const monitorRow = await prisma.monitor.findFirst({ where: { id: parseInt(monitorID), userId: socket.userID } });
+                let monitor = Object.assign(new Monitor(), monitorRow);
                 const monitorData = [{ id: monitor.id, active: monitor.active }];
                 const preloadData = await Monitor.preparePreloadData(monitorData);
                 callback({
@@ -1038,15 +1078,10 @@ let needSetup = false;
 
                 const sqlHourOffset = Database.sqlHourOffset();
 
-                let list = await R.getAll(
-                    `
-                    SELECT *
-                    FROM heartbeat
-                    WHERE monitor_id = ?
-                      AND time > ${sqlHourOffset}
-                    ORDER BY time ASC
-                `,
-                    [monitorID, -period]
+                let list = await prisma.$queryRawUnsafe(
+                    `SELECT * FROM heartbeat WHERE monitor_id = ? AND time > ${sqlHourOffset} ORDER BY time ASC`,
+                    monitorID,
+                    -period
                 );
 
                 callback({
@@ -1113,7 +1148,7 @@ let needSetup = false;
                 const startTime = Date.now();
 
                 // Check if this is a group monitor
-                const monitor = await R.findOne("monitor", " id = ? AND user_id = ? ", [monitorID, socket.userID]);
+                const monitor = await prisma.monitor.findFirst({ where: { id: parseInt(monitorID), userId: socket.userID } });
 
                 // Log with context about deletion type
                 if (monitor && monitor.type === "group") {
@@ -1194,11 +1229,11 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
-                const list = await R.findAll("tag");
+                const list = await prisma.tag.findMany({});
 
                 callback({
                     ok: true,
-                    tags: list.map((bean) => bean.toJSON()),
+                    tags: list.map((record) => ({ id: record.id, name: record.name, color: record.color })),
                 });
             } catch (e) {
                 callback({
@@ -1212,14 +1247,11 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
-                let bean = R.dispense("tag");
-                bean.name = tag.name;
-                bean.color = tag.color;
-                await R.store(bean);
+                const createdTag = await prisma.tag.create({ data: { name: tag.name, color: tag.color } });
 
                 callback({
                     ok: true,
-                    tag: await bean.toJSON(),
+                    tag: { id: createdTag.id, name: createdTag.name, color: createdTag.color },
                 });
             } catch (e) {
                 callback({
@@ -1233,8 +1265,8 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
-                let bean = await R.findOne("tag", " id = ? ", [tag.id]);
-                if (bean == null) {
+                let tagRecord = await prisma.tag.findFirst({ where: { id: tag.id } });
+                if (tagRecord == null) {
                     callback({
                         ok: false,
                         msg: "tagNotFound",
@@ -1242,15 +1274,15 @@ let needSetup = false;
                     });
                     return;
                 }
-                bean.name = tag.name;
-                bean.color = tag.color;
-                await R.store(bean);
+                tagRecord.name = tag.name;
+                tagRecord.color = tag.color;
+                await prisma.tag.update({ where: { id: tagRecord.id }, data: { name: tagRecord.name, color: tagRecord.color } });
 
                 callback({
                     ok: true,
                     msg: "Saved.",
                     msgi18n: true,
-                    tag: await bean.toJSON(),
+                    tag: { id: tagRecord.id, name: tagRecord.name, color: tagRecord.color },
                 });
             } catch (e) {
                 callback({
@@ -1264,7 +1296,7 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
-                await R.exec("DELETE FROM tag WHERE id = ? ", [tagID]);
+                await prisma.$executeRaw`DELETE FROM tag WHERE id = ${tagID}`;
 
                 callback({
                     ok: true,
@@ -1283,11 +1315,7 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
-                await R.exec("INSERT INTO monitor_tag (tag_id, monitor_id, value) VALUES (?, ?, ?)", [
-                    tagID,
-                    monitorID,
-                    value,
-                ]);
+                await prisma.$executeRaw`INSERT INTO monitor_tag (tag_id, monitor_id, value) VALUES (${tagID}, ${monitorID}, ${value})`;
 
                 await server.sendUpdateMonitorIntoList(socket, monitorID);
 
@@ -1308,11 +1336,7 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
-                await R.exec("UPDATE monitor_tag SET value = ? WHERE tag_id = ? AND monitor_id = ?", [
-                    value,
-                    tagID,
-                    monitorID,
-                ]);
+                await prisma.$executeRaw`UPDATE monitor_tag SET value = ${value} WHERE tag_id = ${tagID} AND monitor_id = ${monitorID}`;
 
                 await server.sendUpdateMonitorIntoList(socket, monitorID);
 
@@ -1333,11 +1357,7 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
-                await R.exec("DELETE FROM monitor_tag WHERE tag_id = ? AND monitor_id = ? AND value = ?", [
-                    tagID,
-                    monitorID,
-                    value,
-                ]);
+                await prisma.$executeRaw`DELETE FROM monitor_tag WHERE tag_id = ${tagID} AND monitor_id = ${monitorID} AND value = ${value}`;
 
                 await server.sendUpdateMonitorIntoList(socket, monitorID);
 
@@ -1360,9 +1380,9 @@ let needSetup = false;
 
                 let count;
                 if (monitorID == null) {
-                    count = await R.count("heartbeat", "important = 1");
+                    count = await prisma.heartbeat.count({ where: { important: true } });
                 } else {
-                    count = await R.count("heartbeat", "monitor_id = ? AND important = 1", [monitorID]);
+                    count = await prisma.heartbeat.count({ where: { monitorId: parseInt(monitorID), important: true } });
                 }
 
                 callback({
@@ -1383,28 +1403,19 @@ let needSetup = false;
 
                 let list;
                 if (monitorID == null) {
-                    list = await R.find(
-                        "heartbeat",
-                        `
-                        important = 1
-                        ORDER BY time DESC
-                        LIMIT ?
-                        OFFSET ?
-                    `,
-                        [count, offset]
-                    );
+                    list = await prisma.heartbeat.findMany({
+                        where: { important: true },
+                        orderBy: { time: "desc" },
+                        take: count,
+                        skip: offset,
+                    });
                 } else {
-                    list = await R.find(
-                        "heartbeat",
-                        `
-                        monitor_id = ?
-                        AND important = 1
-                        ORDER BY time DESC
-                        LIMIT ?
-                        OFFSET ?
-                    `,
-                        [monitorID, count, offset]
-                    );
+                    list = await prisma.heartbeat.findMany({
+                        where: { monitorId: parseInt(monitorID), important: true },
+                        orderBy: { time: "desc" },
+                        take: count,
+                        skip: offset,
+                    });
                 }
 
                 callback({
@@ -1637,7 +1648,7 @@ let needSetup = false;
 
                 log.info("manage", `Clear Events Monitor: ${monitorID} User ID: ${socket.userID}`);
 
-                await R.exec("UPDATE heartbeat SET msg = ?, important = ? WHERE monitor_id = ? ", ["", "0", monitorID]);
+                await prisma.$executeRaw`UPDATE heartbeat SET msg = ${""}, important = ${0} WHERE monitor_id = ${monitorID}`;
 
                 callback({
                     ok: true,
@@ -1726,7 +1737,7 @@ let needSetup = false;
         log.debug("auth", "check auto login");
         if (await setting("disableAuth")) {
             log.info("auth", "Disabled Auth: auto login to admin");
-            await afterLogin(socket, await R.findOne("user"));
+            await afterLogin(socket, await prisma.user.findFirst({}));
             socket.emit("autoLogin");
         } else {
             socket.emit("loginRequired");
@@ -1767,14 +1778,16 @@ let needSetup = false;
  * @returns {Promise<void>}
  */
 async function updateMonitorNotification(monitorID, notificationIDList) {
-    await R.exec("DELETE FROM monitor_notification WHERE monitor_id = ? ", [monitorID]);
+    await prisma.$executeRaw`DELETE FROM monitor_notification WHERE monitor_id = ${monitorID}`;
 
     for (let notificationID in notificationIDList) {
         if (notificationIDList[notificationID]) {
-            let relation = R.dispense("monitor_notification");
-            relation.monitor_id = monitorID;
-            relation.notification_id = notificationID;
-            await R.store(relation);
+            await prisma.monitorNotification.create({
+                data: {
+                    monitorId: monitorID,
+                    notificationId: parseInt(notificationID),
+                },
+            });
         }
     }
 }
@@ -1787,7 +1800,7 @@ async function updateMonitorNotification(monitorID, notificationIDList) {
  * @throws {Error} The specified user does not own the monitor
  */
 async function checkOwner(userID, monitorID) {
-    let row = await R.getRow("SELECT id FROM monitor WHERE id = ? AND user_id = ? ", [monitorID, userID]);
+    let row = await prisma.monitor.findFirst({ where: { id: parseInt(monitorID), userId: userID } });
 
     if (!row) {
         throw new Error("You do not own this monitor.");
@@ -1821,8 +1834,9 @@ async function afterLogin(socket, user) {
 
     const monitorPromises = [];
     for (let monitorID in monitorList) {
-        monitorPromises.push(sendHeartbeatList(socket, monitorID));
-        monitorPromises.push(Monitor.sendStats(io, monitorID, user.id));
+        const id = parseInt(monitorID);
+        monitorPromises.push(sendHeartbeatList(socket, id));
+        monitorPromises.push(Monitor.sendStats(io, id, user.id));
     }
 
     await Promise.all(monitorPromises);
@@ -1849,23 +1863,26 @@ async function initDatabase(testMode = false) {
     // Patch the database
     await Database.patch(port, hostname);
 
-    let jwtSecretBean = await R.findOne("setting", " `key` = ? ", ["jwtSecret"]);
+    // Initialize prisma after DB migrations are complete so it sees the fully-patched schema
+    prisma = getPrisma();
 
-    if (!jwtSecretBean) {
+    let jwtSecretRecord = await prisma.setting.findFirst({ where: { key: "jwtSecret" } });
+
+    if (!jwtSecretRecord) {
         log.info("server", "JWT secret is not found, generate one.");
-        jwtSecretBean = await initJWTSecret();
+        jwtSecretRecord = await initJWTSecret();
         log.info("server", "Stored JWT secret into database");
     } else {
         log.debug("server", "Load JWT secret from database.");
     }
 
     // If there is no record in user table, it is a new Uptime Kuma instance, need to setup
-    if ((await R.knex("user").count("id as count").first()).count === 0) {
+    if ((await prisma.user.count()) === 0) {
         log.info("server", "No user, need setup");
         needSetup = true;
     }
 
-    server.jwtSecret = jwtSecretBean.value;
+    server.jwtSecret = jwtSecretRecord.value;
 }
 
 /**
@@ -1875,13 +1892,15 @@ async function initDatabase(testMode = false) {
  * @returns {Promise<void>}
  */
 async function startMonitor(userID, monitorID) {
+    monitorID = parseInt(monitorID);
     await checkOwner(userID, monitorID);
 
     log.info("manage", `Resume Monitor: ${monitorID} User ID: ${userID}`);
 
-    await R.exec("UPDATE monitor SET active = 1 WHERE id = ? AND user_id = ? ", [monitorID, userID]);
+    await prisma.$executeRaw`UPDATE monitor SET active = 1 WHERE id = ${monitorID} AND user_id = ${userID}`;
 
-    let monitor = await R.findOne("monitor", " id = ? ", [monitorID]);
+    const startMonitorRow = await prisma.monitor.findFirst({ where: { id: monitorID } });
+    let monitor = Object.assign(new Monitor(), startMonitorRow);
 
     if (monitor.id in server.monitorList) {
         await server.monitorList[monitor.id].stop();
@@ -1908,11 +1927,12 @@ async function restartMonitor(userID, monitorID) {
  * @returns {Promise<void>}
  */
 async function pauseMonitor(userID, monitorID) {
+    monitorID = parseInt(monitorID);
     await checkOwner(userID, monitorID);
 
     log.info("manage", `Pause Monitor: ${monitorID} User ID: ${userID}`);
 
-    await R.exec("UPDATE monitor SET active = 0 WHERE id = ? AND user_id = ? ", [monitorID, userID]);
+    await prisma.$executeRaw`UPDATE monitor SET active = 0 WHERE id = ${monitorID} AND user_id = ${userID}`;
 
     if (monitorID in server.monitorList) {
         await server.monitorList[monitorID].stop();
@@ -1925,7 +1945,8 @@ async function pauseMonitor(userID, monitorID) {
  * @returns {Promise<void>}
  */
 async function startMonitors() {
-    let list = await R.find("monitor", " active = 1 ");
+    const activeRows = await prisma.monitor.findMany({ where: { active: true } });
+    let list = activeRows.map(r => Object.assign(new Monitor(), r));
 
     for (let monitor of list) {
         server.monitorList[monitor.id] = monitor;

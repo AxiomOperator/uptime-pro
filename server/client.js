@@ -2,29 +2,41 @@
  * For Client Socket
  */
 const { TimeLogger } = require("../src/util");
-const { R } = require("redbean-node");
+const { getPrisma } = require("./prisma");
 const { UptimeKumaServer } = require("./uptime-kuma-server");
 const server = UptimeKumaServer.getInstance();
 const io = server.io;
 const { setting } = require("./util-server");
 const checkVersion = require("./check-version");
 const Database = require("./database");
+const Heartbeat = require("./model/heartbeat");
+const Proxy = require("./model/proxy");
+const APIKey = require("./model/api_key");
+const DockerHost = require("./model/docker_host");
+const RemoteBrowser = require("./model/remote_browser");
 
 /**
  * Send list of notification providers to client
  * @param {Socket} socket Socket.io socket instance
- * @returns {Promise<Bean[]>} List of notifications
+ * @returns {Promise<object[]>} List of notifications
  */
 async function sendNotificationList(socket) {
     const timeLogger = new TimeLogger();
 
     let result = [];
-    let list = await R.find("notification", " user_id = ? ", [socket.userID]);
+    const prisma = getPrisma();
+    let list = await prisma.notification.findMany({ where: { userId: socket.userID } });
 
-    for (let bean of list) {
-        let notificationObject = bean.export();
-        notificationObject.isDefault = notificationObject.isDefault === 1;
-        notificationObject.active = notificationObject.active === 1;
+    for (let row of list) {
+        let notificationObject = {};
+        try {
+            notificationObject = JSON.parse(row.config);
+        } catch (e) {
+            // ignore parse error
+        }
+        notificationObject.id = row.id;
+        notificationObject.isDefault = !!notificationObject.isDefault;
+        notificationObject.active = !!notificationObject.active;
         result.push(notificationObject);
     }
 
@@ -44,15 +56,12 @@ async function sendNotificationList(socket) {
  * @returns {Promise<void>}
  */
 async function sendHeartbeatList(socket, monitorID, toUser = false, overwrite = false) {
-    let list = await R.getAll(
-        `
-        SELECT * FROM heartbeat
-        WHERE monitor_id = ?
-        ORDER BY time DESC
-        LIMIT 100
-    `,
-        [monitorID]
-    );
+    const prisma = getPrisma();
+    let list = await prisma.heartbeat.findMany({
+        where: { monitorId: parseInt(monitorID) },
+        orderBy: { time: "desc" },
+        take: 100,
+    });
 
     let result = list.reverse();
 
@@ -73,21 +82,17 @@ async function sendHeartbeatList(socket, monitorID, toUser = false, overwrite = 
  */
 async function sendImportantHeartbeatList(socket, monitorID, toUser = false, overwrite = false) {
     const timeLogger = new TimeLogger();
+    const prisma = getPrisma();
 
-    let list = await R.find(
-        "heartbeat",
-        `
-        monitor_id = ?
-        AND important = 1
-        ORDER BY time DESC
-        LIMIT 500
-    `,
-        [monitorID]
-    );
+    let rows = await prisma.heartbeat.findMany({
+        where: { monitorId: parseInt(monitorID), important: true },
+        orderBy: { time: "desc" },
+        take: 500,
+    });
 
     timeLogger.print(`[Monitor: ${monitorID}] sendImportantHeartbeatList`);
 
-    const result = list.map((bean) => bean.toJSON());
+    const result = rows.map((row) => Object.assign(new Heartbeat(), row).toJSON());
 
     if (toUser) {
         io.to(socket.userID).emit("importantHeartbeatList", monitorID, result, overwrite);
@@ -99,20 +104,21 @@ async function sendImportantHeartbeatList(socket, monitorID, toUser = false, ove
 /**
  * Emit proxy list to client
  * @param {Socket} socket Socket.io socket instance
- * @returns {Promise<Bean[]>} List of proxies
+ * @returns {Promise<object[]>} List of proxies
  */
 async function sendProxyList(socket) {
     const timeLogger = new TimeLogger();
+    const prisma = getPrisma();
 
-    const list = await R.find("proxy", " user_id = ? ", [socket.userID]);
+    const rows = await prisma.proxy.findMany({ where: { userId: socket.userID } });
     io.to(socket.userID).emit(
         "proxyList",
-        list.map((bean) => bean.export())
+        rows.map((row) => Object.assign(new Proxy(), row).toJSON())
     );
 
     timeLogger.print("Send Proxy List");
 
-    return list;
+    return rows;
 }
 
 /**
@@ -124,10 +130,11 @@ async function sendAPIKeyList(socket) {
     const timeLogger = new TimeLogger();
 
     let result = [];
-    const list = await R.find("api_key", "user_id=?", [socket.userID]);
+    const prisma = getPrisma();
+    const list = await prisma.apiKey.findMany({ where: { userId: socket.userID } });
 
-    for (let bean of list) {
-        result.push(bean.toPublicJSON());
+    for (let row of list) {
+        result.push(Object.assign(new APIKey(), row).toPublicJSON());
     }
 
     io.to(socket.userID).emit("apiKeyList", result);
@@ -165,16 +172,17 @@ async function sendInfo(socket, hideVersion = false) {
 /**
  * Send list of docker hosts to client
  * @param {Socket} socket Socket.io socket instance
- * @returns {Promise<Bean[]>} List of docker hosts
+ * @returns {Promise<object[]>} List of docker hosts
  */
 async function sendDockerHostList(socket) {
     const timeLogger = new TimeLogger();
+    const prisma = getPrisma();
 
     let result = [];
-    let list = await R.find("docker_host", " user_id = ? ", [socket.userID]);
+    let list = await prisma.dockerHost.findMany({ where: { userId: socket.userID } });
 
-    for (let bean of list) {
-        result.push(bean.toJSON());
+    for (let row of list) {
+        result.push(Object.assign(new DockerHost(), row).toJSON());
     }
 
     io.to(socket.userID).emit("dockerHostList", result);
@@ -187,16 +195,17 @@ async function sendDockerHostList(socket) {
 /**
  * Send list of docker hosts to client
  * @param {Socket} socket Socket.io socket instance
- * @returns {Promise<Bean[]>} List of docker hosts
+ * @returns {Promise<object[]>} List of docker hosts
  */
 async function sendRemoteBrowserList(socket) {
     const timeLogger = new TimeLogger();
+    const prisma = getPrisma();
 
     let result = [];
-    let list = await R.find("remote_browser", " user_id = ? ", [socket.userID]);
+    let list = await prisma.remoteBrowser.findMany({ where: { userId: socket.userID } });
 
-    for (let bean of list) {
-        result.push(bean.toJSON());
+    for (let row of list) {
+        result.push(Object.assign(new RemoteBrowser(), row).toJSON());
     }
 
     io.to(socket.userID).emit("remoteBrowserList", result);

@@ -1,6 +1,6 @@
 const { checkLogin } = require("../util-server");
 const { log } = require("../../src/util");
-const { R } = require("redbean-node");
+const { getPrisma } = require("../prisma");
 const { nanoid } = require("nanoid");
 const passwordHash = require("../password-hash");
 const apicache = require("../modules/apicache");
@@ -22,14 +22,14 @@ module.exports.apiKeySocketHandler = (socket) => {
             let clearKey = nanoid(40);
             let hashedKey = await passwordHash.generate(clearKey);
             key["key"] = hashedKey;
-            let bean = await APIKey.save(key, socket.userID);
+            let apiKey = await APIKey.save(key, socket.userID);
 
             log.debug("apikeys", "Added API Key");
             log.debug("apikeys", key);
 
             // Append key ID and prefix to start of key separated by _, used to get
             // correct hash when validating key.
-            let formattedKey = "uk" + bean.id + "_" + clearKey;
+            let formattedKey = "uk" + apiKey.id + "_" + clearKey;
             await sendAPIKeyList(socket);
 
             // Enable API auth if the user creates a key, otherwise only basic
@@ -41,7 +41,7 @@ module.exports.apiKeySocketHandler = (socket) => {
                 msg: "successAdded",
                 msgi18n: true,
                 key: formattedKey,
-                keyID: bean.id,
+                keyID: apiKey.id,
             });
         } catch (e) {
             callback({
@@ -73,7 +73,8 @@ module.exports.apiKeySocketHandler = (socket) => {
 
             log.debug("apikeys", `Deleted API Key: ${keyID} User ID: ${socket.userID}`);
 
-            await R.exec("DELETE FROM api_key WHERE id = ? AND user_id = ? ", [keyID, socket.userID]);
+            const prisma = getPrisma();
+            await prisma.$executeRaw`DELETE FROM api_key WHERE id = ${keyID} AND user_id = ${socket.userID}`;
 
             apicache.clear();
 
@@ -98,7 +99,8 @@ module.exports.apiKeySocketHandler = (socket) => {
 
             log.debug("apikeys", `Disabled Key: ${keyID} User ID: ${socket.userID}`);
 
-            await R.exec("UPDATE api_key SET active = 0 WHERE id = ? ", [keyID]);
+            const prisma = getPrisma();
+            await prisma.$executeRaw`UPDATE api_key SET active = 0 WHERE id = ${keyID}`;
 
             apicache.clear();
 
@@ -123,7 +125,8 @@ module.exports.apiKeySocketHandler = (socket) => {
 
             log.debug("apikeys", `Enabled Key: ${keyID} User ID: ${socket.userID}`);
 
-            await R.exec("UPDATE api_key SET active = 1 WHERE id = ? ", [keyID]);
+            const prisma = getPrisma();
+            await prisma.$executeRaw`UPDATE api_key SET active = 1 WHERE id = ${keyID}`;
 
             apicache.clear();
 

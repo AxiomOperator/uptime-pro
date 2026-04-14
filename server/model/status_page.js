@@ -1,5 +1,6 @@
-const { BeanModel } = require("redbean-node/dist/bean-model");
-const { R } = require("redbean-node");
+const { getPrisma } = require("../prisma");
+const Group = require("./group");
+const Incident = require("./incident");
 const cheerio = require("cheerio");
 const { UptimeKumaServer } = require("../uptime-kuma-server");
 const jsesc = require("jsesc");
@@ -21,7 +22,7 @@ const {
     INCIDENT_PAGE_SIZE,
 } = require("../../src/util");
 
-class StatusPage extends BeanModel {
+class StatusPage {
     /**
      * Like this: { "test-uptime.kuma.pet": "default" }
      * @type {{}}
@@ -36,7 +37,9 @@ class StatusPage extends BeanModel {
      * @returns {Promise<void>}
      */
     static async handleStatusPageRSSResponse(response, slug, request) {
-        let statusPage = await R.findOne("status_page", " slug = ? ", [slug]);
+        const prisma = getPrisma();
+        const _spRow1 = await prisma.statusPage.findFirst({ where: { slug } });
+        let statusPage = _spRow1 ? Object.assign(new StatusPage(), _spRow1) : null;
 
         if (statusPage) {
             const feedUrl = await StatusPage.buildRSSUrl(slug, request);
@@ -61,7 +64,9 @@ class StatusPage extends BeanModel {
             slug = "default";
         }
 
-        let statusPage = await R.findOne("status_page", " slug = ? ", [slug]);
+        const prisma = getPrisma();
+        const _spRow2 = await prisma.statusPage.findFirst({ where: { slug } });
+        let statusPage = _spRow2 ? Object.assign(new StatusPage(), _spRow2) : null;
 
         if (statusPage) {
             response.send(await StatusPage.renderHTML(indexHTML, statusPage));
@@ -81,8 +86,8 @@ class StatusPage extends BeanModel {
 
         // Use custom RSS title if set, otherwise fall back to status page title
         let feedTitle = "Uptime Pro RSS Feed";
-        if (statusPage.rss_title) {
-            feedTitle = statusPage.rss_title;
+        if (statusPage.rssTitle) {
+            feedTitle = statusPage.rssTitle;
         } else if (statusPage.title) {
             feedTitle = `${statusPage.title} RSS Feed`;
         }
@@ -268,16 +273,19 @@ class StatusPage extends BeanModel {
         const config = await statusPage.toPublicJSON();
 
         // Public Group List
-        const showTags = !!statusPage.show_tags;
+        const showTags = !!statusPage.showTags;
 
-        const list = await R.find("group", " public = 1 AND status_page_id = ? ORDER BY weight ", [statusPage.id]);
+        const prismaRSS = getPrisma();
+        const groupRowsRSS = await prismaRSS.$queryRaw`SELECT * FROM \`group\` WHERE public = 1 AND status_page_id = ${statusPage.id} ORDER BY weight`;
+        const list = groupRowsRSS.map(row => Object.assign(new Group(), row));
 
         let heartbeats = [];
 
-        for (let groupBean of list) {
-            let monitorGroup = await groupBean.toPublicJSON(showTags, config?.showCertificateExpiry);
+        for (let group of list) {
+            let monitorGroup = await group.toPublicJSON(showTags, config?.showCertificateExpiry);
             for (const monitor of monitorGroup.monitorList) {
-                const heartbeat = await R.findOne("heartbeat", "monitor_id = ? ORDER BY time DESC", [monitor.id]);
+                const hbRows = await prismaRSS.$queryRaw`SELECT * FROM heartbeat WHERE monitor_id = ${monitor.id} ORDER BY time DESC LIMIT 1`;
+                const heartbeat = hbRows[0] ?? null;
                 if (heartbeat) {
                     heartbeats.push({
                         ...monitor,
@@ -309,24 +317,21 @@ class StatusPage extends BeanModel {
     static async getStatusPageData(statusPage) {
         const config = await statusPage.toPublicJSON();
 
-        // All active incidents
-        let incidents = await R.find(
-            "incident",
-            " pin = 1 AND active = 1 AND status_page_id = ? ORDER BY created_date DESC",
-            [statusPage.id]
-        );
-        incidents = incidents.map((i) => i.toPublicJSON());
+        const prismaPageData = getPrisma();
+        const incidentRows = await prismaPageData.$queryRaw`SELECT * FROM incident WHERE pin = 1 AND active = 1 AND status_page_id = ${statusPage.id} ORDER BY created_date DESC`;
+        let incidents = incidentRows.map(row => Object.assign(new Incident(), row)).map(i => i.toPublicJSON());
 
         let maintenanceList = await StatusPage.getMaintenanceList(statusPage.id);
 
         // Public Group List
         const publicGroupList = [];
-        const showTags = !!statusPage.show_tags;
+        const showTags = !!statusPage.showTags;
 
-        const list = await R.find("group", " public = 1 AND status_page_id = ? ORDER BY weight ", [statusPage.id]);
+        const groupRowsPageData = await prismaPageData.$queryRaw`SELECT * FROM \`group\` WHERE public = 1 AND status_page_id = ${statusPage.id} ORDER BY weight`;
+        const list = groupRowsPageData.map(row => Object.assign(new Group(), row));
 
-        for (let groupBean of list) {
-            let monitorGroup = await groupBean.toPublicJSON(showTags, config?.showCertificateExpiry);
+        for (let group of list) {
+            let monitorGroup = await group.toPublicJSON(showTags, config?.showCertificateExpiry);
             publicGroupList.push(monitorGroup);
         }
 
@@ -345,23 +350,30 @@ class StatusPage extends BeanModel {
      * @returns {Promise<void>}
      */
     static async loadDomainMappingList() {
-        StatusPage.domainMappingList = await R.getAssoc(`
+        const prismaMapping = getPrisma();
+        const mappingRows = await prismaMapping.$queryRaw`
             SELECT domain, slug
             FROM status_page, status_page_cname
             WHERE status_page.id = status_page_cname.status_page_id
-        `);
+        `;
+        StatusPage.domainMappingList = mappingRows.reduce((acc, row) => {
+            acc[row.domain] = row.slug;
+            return acc;
+        }, {});
     }
 
     /**
      * Send status page list to client
      * @param {Server} io io Socket server instance
      * @param {Socket} socket Socket.io instance
-     * @returns {Promise<Bean[]>} Status page list
+     * @returns {Promise<StatusPage[]>} Status page list
      */
     static async sendStatusPageList(io, socket) {
         let result = {};
 
-        let list = await R.findAll("status_page", " ORDER BY title ");
+        const prismaList = getPrisma();
+        const spRows = await prismaList.statusPage.findMany({ orderBy: { title: "asc" } });
+        const list = spRows.map(row => Object.assign(new StatusPage(), row));
 
         for (let item of list) {
             result[item.id] = await item.toJSON();
@@ -381,11 +393,11 @@ class StatusPage extends BeanModel {
             throw new Error("Invalid array");
         }
 
-        let trx = await R.begin();
+        const prismaUpdate = getPrisma();
 
-        await trx.exec("DELETE FROM status_page_cname WHERE status_page_id = ?", [this.id]);
+        await prismaUpdate.$transaction(async (tx) => {
+            await tx.$executeRaw`DELETE FROM status_page_cname WHERE status_page_id = ${this.id}`;
 
-        try {
             for (let domain of domainNameList) {
                 if (typeof domain !== "string") {
                     throw new Error("Invalid domain");
@@ -396,18 +408,16 @@ class StatusPage extends BeanModel {
                 }
 
                 // If the domain name is used in another status page, delete it
-                await trx.exec("DELETE FROM status_page_cname WHERE domain = ?", [domain]);
+                await tx.$executeRaw`DELETE FROM status_page_cname WHERE domain = ${domain}`;
 
-                let mapping = trx.dispense("status_page_cname");
-                mapping.status_page_id = this.id;
-                mapping.domain = domain;
-                await trx.store(mapping);
+                await tx.statusPageCname.create({
+                    data: {
+                        statusPageId: this.id,
+                        domain,
+                    },
+                });
             }
-            await trx.commit();
-        } catch (error) {
-            await trx.rollback();
-            throw error;
-        }
+        });
     }
 
     /**
@@ -440,17 +450,17 @@ class StatusPage extends BeanModel {
             theme: this.theme,
             autoRefreshInterval: this.autoRefreshInterval,
             published: !!this.published,
-            showTags: !!this.show_tags,
+            showTags: !!this.showTags,
             domainNameList: this.getDomainNameList(),
-            customCSS: this.custom_css,
-            footerText: this.footer_text,
-            showPoweredBy: !!this.show_powered_by,
-            analyticsId: this.analytics_id,
-            analyticsScriptUrl: this.analytics_script_url,
-            analyticsType: this.analytics_type,
-            showCertificateExpiry: !!this.show_certificate_expiry,
-            showOnlyLastHeartbeat: !!this.show_only_last_heartbeat,
-            rssTitle: this.rss_title,
+            customCSS: this.customCss,
+            footerText: this.footerText,
+            showPoweredBy: !!this.showPoweredBy,
+            analyticsId: this.analyticsId,
+            analyticsScriptUrl: this.analyticsScriptUrl,
+            analyticsType: this.analyticsType,
+            showCertificateExpiry: !!this.showCertificateExpiry,
+            showOnlyLastHeartbeat: !!this.showOnlyLastHeartbeat,
+            rssTitle: this.rssTitle,
         };
     }
 
@@ -468,16 +478,17 @@ class StatusPage extends BeanModel {
             autoRefreshInterval: this.autoRefreshInterval,
             theme: this.theme,
             published: !!this.published,
-            showTags: !!this.show_tags,
-            customCSS: this.custom_css,
-            footerText: this.footer_text,
-            showPoweredBy: !!this.show_powered_by,
-            analyticsId: this.analytics_id,
-            analyticsScriptUrl: this.analytics_script_url,
-            analyticsType: this.analytics_type,
-            showCertificateExpiry: !!this.show_certificate_expiry,
-            showOnlyLastHeartbeat: !!this.show_only_last_heartbeat,
-            rssTitle: this.rss_title,
+            showTags: !!this.showTags,
+            domainNameList: this.getDomainNameList(),
+            customCSS: this.customCss,
+            footerText: this.footerText,
+            showPoweredBy: !!this.showPoweredBy,
+            analyticsId: this.analyticsId,
+            analyticsScriptUrl: this.analyticsScriptUrl,
+            analyticsType: this.analyticsType,
+            showCertificateExpiry: !!this.showCertificateExpiry,
+            showOnlyLastHeartbeat: !!this.showOnlyLastHeartbeat,
+            rssTitle: this.rssTitle,
         };
     }
 
@@ -487,7 +498,9 @@ class StatusPage extends BeanModel {
      * @returns {Promise<number>} ID of status page
      */
     static async slugToID(slug) {
-        return await R.getCell("SELECT id FROM status_page WHERE slug = ? ", [slug]);
+        const prismaSlug = getPrisma();
+        const slugRow = await prismaSlug.statusPage.findFirst({ where: { slug }, select: { id: true } });
+        return slugRow?.id ?? null;
     }
 
     /**
@@ -510,35 +523,38 @@ class StatusPage extends BeanModel {
      * @returns {Promise<object>} Paginated incident data with cursor
      */
     static async getIncidentHistory(statusPageId, cursor = null, isPublic = true) {
-        let incidents;
+        const prismaHistory = getPrisma();
+        let incidentRowsHistory;
 
         if (cursor) {
-            incidents = await R.find(
-                "incident",
-                " status_page_id = ? AND created_date < ? ORDER BY created_date DESC LIMIT ? ",
-                [statusPageId, cursor, INCIDENT_PAGE_SIZE]
-            );
+            incidentRowsHistory = await prismaHistory.incident.findMany({
+                where: { statusPageId: statusPageId, createdDate: { lt: new Date(cursor) } },
+                orderBy: { createdDate: "desc" },
+                take: INCIDENT_PAGE_SIZE,
+            });
         } else {
-            incidents = await R.find("incident", " status_page_id = ? ORDER BY created_date DESC LIMIT ? ", [
-                statusPageId,
-                INCIDENT_PAGE_SIZE,
-            ]);
+            incidentRowsHistory = await prismaHistory.incident.findMany({
+                where: { statusPageId: statusPageId },
+                orderBy: { createdDate: "desc" },
+                take: INCIDENT_PAGE_SIZE,
+            });
         }
 
-        const total = await R.count("incident", " status_page_id = ? ", [statusPageId]);
+        const incidents = incidentRowsHistory.map(row => Object.assign(new Incident(), row));
+
+        const total = await prismaHistory.incident.count({ where: { statusPageId: statusPageId } });
 
         const lastIncident = incidents[incidents.length - 1];
         let nextCursor = null;
         let hasMore = false;
 
         if (lastIncident) {
-            const moreCount = await R.count("incident", " status_page_id = ? AND created_date < ? ", [
-                statusPageId,
-                lastIncident.created_date,
-            ]);
+            const moreCount = await prismaHistory.incident.count({
+                where: { statusPageId: statusPageId, createdDate: { lt: lastIncident.createdDate } },
+            });
             hasMore = moreCount > 0;
             if (hasMore) {
-                nextCursor = lastIncident.created_date;
+                nextCursor = lastIncident.createdDate;
             }
         }
 
@@ -559,14 +575,13 @@ class StatusPage extends BeanModel {
         try {
             const publicMaintenanceList = [];
 
-            let maintenanceIDList = await R.getCol(
-                `
+            const prismaMaintenanceList = getPrisma();
+            const maintenanceRows = await prismaMaintenanceList.$queryRaw`
                 SELECT DISTINCT maintenance_id
                 FROM maintenance_status_page
-                WHERE status_page_id = ?
-            `,
-                [statusPageId]
-            );
+                WHERE status_page_id = ${statusPageId}
+            `;
+            let maintenanceIDList = maintenanceRows.map(row => row.maintenance_id);
 
             for (const maintenanceID of maintenanceIDList) {
                 let maintenance = UptimeKumaServer.getInstance().getMaintenance(maintenanceID);

@@ -1,4 +1,4 @@
-const { R } = require("redbean-node");
+const { getPrisma } = require("../prisma");
 const { log } = require("../../src/util");
 const Database = require("../database");
 const { Settings } = require("../settings");
@@ -38,18 +38,22 @@ const clearOldData = async () => {
     } else {
         log.debug("clearOldData", `Clearing Data older than ${parsedPeriod} days...`);
         const sqlHourOffset = Database.sqlHourOffset();
+        const prisma = getPrisma();
 
         try {
             // Heartbeat
-            await R.exec("DELETE FROM heartbeat WHERE time < " + sqlHourOffset, [parsedPeriod * -24]);
+            await prisma.$executeRawUnsafe(
+                `DELETE FROM heartbeat WHERE time < ${sqlHourOffset}`,
+                parsedPeriod * -24
+            );
 
             let timestamp = dayjs().subtract(parsedPeriod, "day").utc().startOf("day").unix();
 
             // stat_daily
-            await R.exec("DELETE FROM stat_daily WHERE timestamp < ? ", [timestamp]);
+            await prisma.$executeRaw`DELETE FROM stat_daily WHERE timestamp < ${timestamp}`;
 
             if (Database.dbConfig.type === "sqlite") {
-                await R.exec("PRAGMA optimize;");
+                await prisma.$executeRaw`PRAGMA optimize`;
             }
         } catch (e) {
             log.error("clearOldData", `Failed to clear old data: ${e.message}`);

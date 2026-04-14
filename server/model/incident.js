@@ -1,17 +1,24 @@
-const { BeanModel } = require("redbean-node/dist/bean-model");
-const { R } = require("redbean-node");
+const { getPrisma } = require("../prisma");
 const dayjs = require("dayjs");
 
-class Incident extends BeanModel {
+class Incident {
     /**
      * Resolve the incident and mark it as inactive
      * @returns {Promise<void>}
      */
     async resolve() {
+        const prisma = getPrisma();
         this.active = false;
         this.pin = false;
-        this.last_updated_date = R.isoDateTime(dayjs.utc());
-        await R.store(this);
+        this.lastUpdatedDate = dayjs.utc().toDate();
+        await prisma.incident.update({
+            where: { id: this.id },
+            data: {
+                active: false,
+                pin: false,
+                lastUpdatedDate: this.lastUpdatedDate,
+            }
+        });
     }
 
     /**
@@ -26,9 +33,9 @@ class Incident extends BeanModel {
             content: this.content,
             pin: !!this.pin,
             active: !!this.active,
-            createdDate: this.created_date,
-            lastUpdatedDate: this.last_updated_date,
-            status_page_id: this.status_page_id,
+            createdDate: this.createdDate,
+            lastUpdatedDate: this.lastUpdatedDate,
+            statusPageId: this.statusPageId,
         };
     }
 }

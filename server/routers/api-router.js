@@ -6,9 +6,10 @@ const {
     filterAndJoin,
     sendHttpError,
 } = require("../util-server");
-const { R } = require("redbean-node");
+const { getPrisma } = require("../prisma");
 const apicache = require("../modules/apicache");
 const Monitor = require("../model/monitor");
+const Heartbeat = require("../model/heartbeat");
 const dayjs = require("dayjs");
 const { UP, MAINTENANCE, DOWN, PENDING, flipStatus, log, badgeConstants } = require("../../src/util");
 const StatusPage = require("../model/status_page");
@@ -59,7 +60,8 @@ router.all("/api/push/:pushToken", async (request, response) => {
             throw new Error(`Invalid ping value. Must be between 0 and ${MAX_PING_MS} ms.`);
         }
 
-        let monitor = await R.findOne("monitor", " push_token = ? AND active = 1 ", [pushToken]);
+        const prisma = getPrisma();
+        let monitor = await prisma.monitor.findFirst({ where: { pushToken: pushToken, active: true } });
 
         if (!monitor) {
             throw new Error("Monitor not found or not active.");
@@ -69,67 +71,81 @@ router.all("/api/push/:pushToken", async (request, response) => {
 
         let isFirstBeat = true;
 
-        let bean = R.dispense("heartbeat");
-        bean.time = R.isoDateTimeMillis(dayjs.utc());
-        bean.monitor_id = monitor.id;
-        bean.ping = ping;
-        bean.msg = msg;
-        bean.downCount = previousHeartbeat?.downCount || 0;
+        let heartbeat = new Heartbeat();
+        heartbeat.time = dayjs.utc().toDate();
+        heartbeat.monitorId = monitor.id;
+        heartbeat.ping = ping;
+        heartbeat.msg = msg;
+        heartbeat.downCount = previousHeartbeat?.downCount || 0;
 
         if (previousHeartbeat) {
             isFirstBeat = false;
-            bean.duration = dayjs(bean.time).diff(dayjs(previousHeartbeat.time), "second");
+            heartbeat.duration = dayjs(heartbeat.time).diff(dayjs(previousHeartbeat.time), "second");
         }
 
         if (await Monitor.isUnderMaintenance(monitor.id)) {
             msg = "Monitor under maintenance";
-            bean.status = MAINTENANCE;
+            heartbeat.status = MAINTENANCE;
         } else {
-            determineStatus(statusFromParam, previousHeartbeat, monitor.maxretries, monitor.isUpsideDown(), bean);
+            determineStatus(statusFromParam, previousHeartbeat, monitor.maxretries, monitor.isUpsideDown(), heartbeat);
         }
 
         // Calculate uptime
         let uptimeCalculator = await UptimeCalculator.getUptimeCalculator(monitor.id);
-        let endTimeDayjs = await uptimeCalculator.update(bean.status, parseFloat(bean.ping));
-        bean.end_time = R.isoDateTimeMillis(endTimeDayjs);
+        let endTimeDayjs = await uptimeCalculator.update(heartbeat.status, parseFloat(heartbeat.ping));
+        heartbeat.endTime = endTimeDayjs.toDate();
 
         log.debug("router", `/api/push/ called at ${dayjs().format("YYYY-MM-DD HH:mm:ss.SSS")}`);
         log.debug("router", "PreviousStatus: " + previousHeartbeat?.status);
-        log.debug("router", "Current Status: " + bean.status);
+        log.debug("router", "Current Status: " + heartbeat.status);
 
-        bean.important = Monitor.isImportantBeat(isFirstBeat, previousHeartbeat?.status, bean.status);
+        heartbeat.important = Monitor.isImportantBeat(isFirstBeat, previousHeartbeat?.status, heartbeat.status);
 
-        if (Monitor.isImportantForNotification(isFirstBeat, previousHeartbeat?.status, bean.status)) {
+        if (Monitor.isImportantForNotification(isFirstBeat, previousHeartbeat?.status, heartbeat.status)) {
             // Reset down count
-            bean.downCount = 0;
+            heartbeat.downCount = 0;
 
             log.debug("monitor", `[${monitor.name}] sendNotification`);
-            await Monitor.sendNotification(isFirstBeat, monitor, bean);
+            await Monitor.sendNotification(isFirstBeat, monitor, heartbeat);
         } else {
-            if (bean.status === DOWN && monitor.resendInterval > 0) {
-                ++bean.downCount;
-                if (bean.downCount >= monitor.resendInterval) {
+            if (heartbeat.status === DOWN && monitor.resendInterval > 0) {
+                ++heartbeat.downCount;
+                if (heartbeat.downCount >= monitor.resendInterval) {
                     // Send notification again, because we are still DOWN
                     log.debug(
                         "monitor",
-                        `[${monitor.name}] sendNotification again: Down Count: ${bean.downCount} | Resend Interval: ${monitor.resendInterval}`
+                        `[${monitor.name}] sendNotification again: Down Count: ${heartbeat.downCount} | Resend Interval: ${monitor.resendInterval}`
                     );
-                    await Monitor.sendNotification(isFirstBeat, monitor, bean);
+                    await Monitor.sendNotification(isFirstBeat, monitor, heartbeat);
 
                     // Reset down count
-                    bean.downCount = 0;
+                    heartbeat.downCount = 0;
                 }
             }
         }
 
-        await R.store(bean);
+        const created = await prisma.heartbeat.create({
+            data: {
+                monitorId: heartbeat.monitorId,
+                time: heartbeat.time,
+                status: heartbeat.status,
+                msg: heartbeat.msg ?? null,
+                ping: heartbeat.ping ?? null,
+                important: heartbeat.important ?? false,
+                duration: heartbeat.duration ?? 0,
+                downCount: heartbeat.downCount ?? 0,
+                endTime: heartbeat.endTime ?? null,
+                retries: heartbeat.retries ?? 0,
+            },
+        });
+        heartbeat.id = created.id;
 
-        io.to(monitor.user_id).emit("heartbeat", bean.toJSON());
+        io.to(monitor.userId).emit("heartbeat", heartbeat.toJSON());
 
-        Monitor.sendStats(io, monitor.id, monitor.user_id);
+        Monitor.sendStats(io, monitor.id, monitor.userId);
 
         try {
-            new Prometheus(monitor, await monitor.getTags()).update(bean, undefined);
+            new Prometheus(monitor, await monitor.getTags()).update(heartbeat, undefined);
         } catch (e) {
             log.error("prometheus", "Please submit an issue to our GitHub repo. Prometheus update error: ", e.message);
         }
@@ -374,20 +390,19 @@ router.get("/api/badge/:id/avg-response/:duration?", cache("5 minutes"), async (
         const overrideValue = value && parseFloat(value);
 
         const sqlHourOffset = Database.sqlHourOffset();
+        const prisma = getPrisma();
 
-        const publicAvgPing = parseInt(
-            await R.getCell(
-                `
-            SELECT AVG(ping) FROM monitor_group, \`group\`, heartbeat
+        const rows = await prisma.$queryRawUnsafe(
+            `SELECT AVG(ping) as avg_ping FROM monitor_group, \`group\`, heartbeat
             WHERE monitor_group.group_id = \`group\`.id
             AND heartbeat.time > ${sqlHourOffset}
             AND heartbeat.ping IS NOT NULL
             AND public = 1
-            AND heartbeat.monitor_id = ?
-            `,
-                [-requestedDuration, requestedMonitorId]
-            )
+            AND heartbeat.monitor_id = ?`,
+            -requestedDuration,
+            requestedMonitorId
         );
+        const publicAvgPing = parseInt(rows[0]?.avg_ping ?? 0);
 
         const badgeValues = { style };
 
@@ -458,14 +473,15 @@ router.get("/api/badge/:id/cert-exp", cache("5 minutes"), async (request, respon
             badgeValues.message = "N/A";
             badgeValues.color = badgeConstants.naColor;
         } else {
-            const tlsInfoBean = await R.findOne("monitor_tls_info", "monitor_id = ?", [requestedMonitorId]);
+            const prisma = getPrisma();
+            const tlsInfoRecord = await prisma.monitorTlsInfo.findFirst({ where: { monitorId: requestedMonitorId } });
 
-            if (!tlsInfoBean) {
+            if (!tlsInfoRecord) {
                 // return a "No/Bad Cert" badge in naColor (grey), if no cert saved (does not save bad certs?)
                 badgeValues.message = "No/Bad Cert";
                 badgeValues.color = badgeConstants.naColor;
             } else {
-                const tlsInfo = JSON.parse(tlsInfoBean.info_json);
+                const tlsInfo = JSON.parse(tlsInfoRecord.infoJson);
 
                 if (!tlsInfo.valid) {
                     // return a "Bad Cert" badge in naColor (grey), when cert is not valid
@@ -570,10 +586,10 @@ router.get("/api/badge/:id/response", cache("5 minutes"), async (request, respon
  * @param {object} previousHeartbeat - The previous heartbeat object.
  * @param {number} maxretries - The maximum number of retries allowed.
  * @param {boolean} isUpsideDown - Indicates if the monitor is upside down.
- * @param {object} bean - The new heartbeat object.
+ * @param {object} heartbeat - The new heartbeat object.
  * @returns {void}
  */
-function determineStatus(status, previousHeartbeat, maxretries, isUpsideDown, bean) {
+function determineStatus(status, previousHeartbeat, maxretries, isUpsideDown, heartbeat) {
     if (isUpsideDown) {
         status = flipStatus(status);
     }
@@ -583,37 +599,37 @@ function determineStatus(status, previousHeartbeat, maxretries, isUpsideDown, be
             // Going Down
             if (maxretries > 0 && previousHeartbeat.retries < maxretries) {
                 // Retries available
-                bean.retries = previousHeartbeat.retries + 1;
-                bean.status = PENDING;
+                heartbeat.retries = previousHeartbeat.retries + 1;
+                heartbeat.status = PENDING;
             } else {
                 // No more retries
-                bean.retries = 0;
-                bean.status = DOWN;
+                heartbeat.retries = 0;
+                heartbeat.status = DOWN;
             }
         } else if (previousHeartbeat.status === PENDING && status === DOWN && previousHeartbeat.retries < maxretries) {
             // Retries available
-            bean.retries = previousHeartbeat.retries + 1;
-            bean.status = PENDING;
+            heartbeat.retries = previousHeartbeat.retries + 1;
+            heartbeat.status = PENDING;
         } else {
             // No more retries or not pending
             if (status === DOWN) {
-                bean.retries = previousHeartbeat.retries + 1;
-                bean.status = status;
+                heartbeat.retries = previousHeartbeat.retries + 1;
+                heartbeat.status = status;
             } else {
-                bean.retries = 0;
-                bean.status = status;
+                heartbeat.retries = 0;
+                heartbeat.status = status;
             }
         }
     } else {
         // First beat?
         if (status === DOWN && maxretries > 0) {
             // Retries available
-            bean.retries = 1;
-            bean.status = PENDING;
+            heartbeat.retries = 1;
+            heartbeat.status = PENDING;
         } else {
             // Retires not enabled
-            bean.retries = 0;
-            bean.status = status;
+            heartbeat.retries = 0;
+            heartbeat.status = status;
         }
     }
 }
@@ -624,16 +640,14 @@ function determineStatus(status, previousHeartbeat, maxretries, isUpsideDown, be
  * @returns {Promise<boolean>} true if the monitor is public, otherwise false
  */
 async function isMonitorPublic(monitorID) {
-    let publicMonitor = await R.getRow(
-        `
-            SELECT monitor_group.monitor_id FROM monitor_group, \`group\`
-            WHERE monitor_group.group_id = \`group\`.id
-            AND monitor_group.monitor_id = ?
-            AND public = 1
-        `,
-        [monitorID]
-    );
-    return !!publicMonitor;
+    const prisma = getPrisma();
+    const rows = await prisma.$queryRaw`
+        SELECT monitor_group.monitor_id FROM monitor_group, \`group\`
+        WHERE monitor_group.group_id = \`group\`.id
+        AND monitor_group.monitor_id = ${monitorID}
+        AND public = 1
+    `;
+    return rows.length > 0;
 }
 
 module.exports = router;

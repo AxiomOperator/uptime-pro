@@ -54,7 +54,7 @@ class LunaSea extends NotificationProvider {
 
     /**
      * Generates the lunasea target to send the notification to
-     * @param {BeanModel} notification Notification details
+     * @param {object} notification Notification details
      * @returns {string} The target to send the notification to
      */
     getTarget(notification) {

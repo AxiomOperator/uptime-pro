@@ -1,6 +1,6 @@
 const { checkLogin } = require("../util-server");
 const { log } = require("../../src/util");
-const { R } = require("redbean-node");
+const { getPrisma } = require("../prisma");
 const apicache = require("../modules/apicache");
 const { UptimeKumaServer } = require("../uptime-kuma-server");
 const Maintenance = require("../model/maintenance");
@@ -19,12 +19,34 @@ module.exports.maintenanceSocketHandler = (socket) => {
 
             log.debug("maintenance", maintenance);
 
-            let bean = await Maintenance.jsonToBean(R.dispense("maintenance"), maintenance);
-            bean.user_id = socket.userID;
-            let maintenanceID = await R.store(bean);
+            const prisma = getPrisma();
+            let record = await Maintenance.jsonToBean(new Maintenance(), maintenance);
+            record.userId = socket.userID;
 
-            server.maintenanceList[maintenanceID] = bean;
-            await bean.run(true);
+            const created = await prisma.maintenance.create({
+                data: {
+                    title: record.title,
+                    description: record.description,
+                    strategy: record.strategy,
+                    intervalDay: record.intervalDay ?? null,
+                    timezone: record.timezone ?? null,
+                    active: record.active !== undefined ? !!record.active : true,
+                    userId: record.userId,
+                    startDate: record.startDate ? new Date(record.startDate) : null,
+                    endDate: record.endDate ? new Date(record.endDate) : null,
+                    startTime: record.startTime ?? null,
+                    endTime: record.endTime ?? null,
+                    weekdays: record.weekdays ?? "[]",
+                    daysOfMonth: record.daysOfMonth ?? "[]",
+                    cron: record.cron ?? null,
+                    duration: record.duration ?? null,
+                },
+            });
+            record.id = created.id;
+            let maintenanceID = created.id;
+
+            server.maintenanceList[maintenanceID] = record;
+            await record.run(true);
 
             await server.sendMaintenanceList(socket);
 
@@ -47,22 +69,41 @@ module.exports.maintenanceSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
-            let bean = server.getMaintenance(maintenance.id);
+            const prisma = getPrisma();
+            let record = server.getMaintenance(maintenance.id);
 
-            if (bean.user_id !== socket.userID) {
+            if (record.userId !== socket.userID) {
                 throw new Error("Permission denied.");
             }
 
-            await Maintenance.jsonToBean(bean, maintenance);
-            await R.store(bean);
-            await bean.run(true);
+            await Maintenance.jsonToBean(record, maintenance);
+            await prisma.maintenance.update({
+                where: { id: record.id },
+                data: {
+                    title: record.title,
+                    description: record.description,
+                    strategy: record.strategy,
+                    intervalDay: record.intervalDay ?? null,
+                    timezone: record.timezone ?? null,
+                    active: record.active !== undefined ? !!record.active : true,
+                    startDate: record.startDate ? new Date(record.startDate) : null,
+                    endDate: record.endDate ? new Date(record.endDate) : null,
+                    startTime: record.startTime ?? null,
+                    endTime: record.endTime ?? null,
+                    weekdays: record.weekdays ?? "[]",
+                    daysOfMonth: record.daysOfMonth ?? "[]",
+                    cron: record.cron ?? null,
+                    duration: record.duration ?? null,
+                },
+            });
+            await record.run(true);
             await server.sendMaintenanceList(socket);
 
             callback({
                 ok: true,
                 msg: "Saved.",
                 msgi18n: true,
-                maintenanceID: bean.id,
+                maintenanceID: record.id,
             });
         } catch (e) {
             log.error("maintenance", e);
@@ -78,16 +119,16 @@ module.exports.maintenanceSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
-            await R.exec("DELETE FROM monitor_maintenance WHERE maintenance_id = ?", [maintenanceID]);
+            const prisma = getPrisma();
+            await prisma.$executeRaw`DELETE FROM monitor_maintenance WHERE maintenance_id = ${maintenanceID}`;
 
             for await (const monitor of monitors) {
-                let bean = R.dispense("monitor_maintenance");
-
-                bean.import({
-                    monitor_id: monitor.id,
-                    maintenance_id: maintenanceID,
+                await prisma.monitorMaintenance.create({
+                    data: {
+                        monitorId: monitor.id,
+                        maintenanceId: maintenanceID,
+                    },
                 });
-                await R.store(bean);
             }
 
             apicache.clear();
@@ -110,16 +151,16 @@ module.exports.maintenanceSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
-            await R.exec("DELETE FROM maintenance_status_page WHERE maintenance_id = ?", [maintenanceID]);
+            const prisma = getPrisma();
+            await prisma.$executeRaw`DELETE FROM maintenance_status_page WHERE maintenance_id = ${maintenanceID}`;
 
             for await (const statusPage of statusPages) {
-                let bean = R.dispense("maintenance_status_page");
-
-                bean.import({
-                    status_page_id: statusPage.id,
-                    maintenance_id: maintenanceID,
+                await prisma.maintenanceStatusPage.create({
+                    data: {
+                        statusPageId: statusPage.id,
+                        maintenanceId: maintenanceID,
+                    },
                 });
-                await R.store(bean);
             }
 
             apicache.clear();
@@ -143,11 +184,15 @@ module.exports.maintenanceSocketHandler = (socket) => {
 
             log.debug("maintenance", `Get Maintenance: ${maintenanceID} User ID: ${socket.userID}`);
 
-            let bean = await R.findOne("maintenance", " id = ? AND user_id = ? ", [maintenanceID, socket.userID]);
+            const prisma = getPrisma();
+            let row = await prisma.maintenance.findFirst({
+                where: { id: parseInt(maintenanceID), userId: socket.userID },
+            });
+            let record = Object.assign(new Maintenance(), row);
 
             callback({
                 ok: true,
-                maintenance: await bean.toJSON(),
+                maintenance: await record.toJSON(),
             });
         } catch (e) {
             callback({
@@ -179,10 +224,8 @@ module.exports.maintenanceSocketHandler = (socket) => {
 
             log.debug("maintenance", `Get Monitors for Maintenance: ${maintenanceID} User ID: ${socket.userID}`);
 
-            let monitors = await R.getAll(
-                "SELECT monitor.id FROM monitor_maintenance mm JOIN monitor ON mm.monitor_id = monitor.id WHERE mm.maintenance_id = ? ",
-                [maintenanceID]
-            );
+            const prisma = getPrisma();
+            let monitors = await prisma.$queryRaw`SELECT monitor.id FROM monitor_maintenance mm JOIN monitor ON mm.monitor_id = monitor.id WHERE mm.maintenance_id = ${maintenanceID}`;
 
             callback({
                 ok: true,
@@ -203,10 +246,8 @@ module.exports.maintenanceSocketHandler = (socket) => {
 
             log.debug("maintenance", `Get Status Pages for Maintenance: ${maintenanceID} User ID: ${socket.userID}`);
 
-            let statusPages = await R.getAll(
-                "SELECT status_page.id, status_page.title FROM maintenance_status_page msp JOIN status_page ON msp.status_page_id = status_page.id WHERE msp.maintenance_id = ? ",
-                [maintenanceID]
-            );
+            const prisma = getPrisma();
+            let statusPages = await prisma.$queryRaw`SELECT status_page.id, status_page.title FROM maintenance_status_page msp JOIN status_page ON msp.status_page_id = status_page.id WHERE msp.maintenance_id = ${maintenanceID}`;
 
             callback({
                 ok: true,
@@ -232,7 +273,8 @@ module.exports.maintenanceSocketHandler = (socket) => {
                 delete server.maintenanceList[maintenanceID];
             }
 
-            await R.exec("DELETE FROM maintenance WHERE id = ? AND user_id = ? ", [maintenanceID, socket.userID]);
+            const prisma = getPrisma();
+            await prisma.$executeRaw`DELETE FROM maintenance WHERE id = ${maintenanceID} AND user_id = ${socket.userID}`;
 
             apicache.clear();
 
@@ -264,7 +306,11 @@ module.exports.maintenanceSocketHandler = (socket) => {
             }
 
             maintenance.active = false;
-            await R.store(maintenance);
+            const prisma = getPrisma();
+            await prisma.maintenance.update({
+                where: { id: maintenance.id },
+                data: { active: false },
+            });
             maintenance.stop();
 
             apicache.clear();
@@ -297,7 +343,11 @@ module.exports.maintenanceSocketHandler = (socket) => {
             }
 
             maintenance.active = true;
-            await R.store(maintenance);
+            const prisma = getPrisma();
+            await prisma.maintenance.update({
+                where: { id: maintenance.id },
+                data: { active: true },
+            });
             await maintenance.run();
 
             apicache.clear();

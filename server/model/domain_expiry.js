@@ -1,5 +1,4 @@
-const { BeanModel } = require("redbean-node/dist/bean-model");
-const { R } = require("redbean-node");
+const { getPrisma } = require("../prisma");
 const { log, TYPES_WITH_DOMAIN_EXPIRY_SUPPORT_VIA_FIELD } = require("../../src/util");
 const { parse: parseTld } = require("tldts");
 const { setting, setSetting } = require("../util-server");
@@ -167,21 +166,23 @@ async function sendDomainNotificationByTargetDays(domain, daysRemaining, targetD
     return sent;
 }
 
-class DomainExpiry extends BeanModel {
+class DomainExpiry {
     /**
      * @param {string} domain Domain name
-     * @returns {Promise<DomainExpiry>} Domain bean
+     * @returns {Promise<DomainExpiry>} Domain record
      */
     static async findByName(domain) {
-        return R.findOne("domain_expiry", "domain = ?", [domain]);
+        const prisma = getPrisma();
+        const row = await prisma.domainExpiry.findFirst({ where: { domain } });
+        return row ? Object.assign(new DomainExpiry(), row) : null;
     }
 
     /**
      * @param {string} domain Domain name
-     * @returns {DomainExpiry} Domain bean
+     * @returns {DomainExpiry} Domain record
      */
     static createByName(domain) {
-        const d = R.dispense("domain_expiry");
+        const d = new DomainExpiry();
         d.domain = domain;
         return d;
     }
@@ -246,7 +247,7 @@ class DomainExpiry extends BeanModel {
 
     /**
      * @param {string} domainName Domain name
-     * @returns {Promise<DomainExpiry>} Domain expiry bean
+     * @returns {Promise<DomainExpiry>} Domain expiry record
      */
     static async findByDomainNameOrCreate(domainName) {
         let domain = await DomainExpiry.findByName(domainName);
@@ -276,22 +277,22 @@ class DomainExpiry extends BeanModel {
      * @returns {Promise<Date | undefined>} the expiry date
      */
     static async checkExpiry(domainName) {
-        let bean = await DomainExpiry.findByDomainNameOrCreate(domainName);
+        let record = await DomainExpiry.findByDomainNameOrCreate(domainName);
         let expiryDate;
 
-        if (bean?.lastCheck && dayjs.utc().diff(dayjs.utc(bean.lastCheck), "day") < 1) {
-            log.debug("domain_expiry", `Domain expiry already checked recently for ${bean.domain}, won't re-check.`);
-            return bean.expiry;
-        } else if (bean) {
-            expiryDate = await bean.getExpiryDate();
+        if (record?.lastCheck && dayjs.utc().diff(dayjs.utc(record.lastCheck), "day") < 1) {
+            log.debug("domain_expiry", `Domain expiry already checked recently for ${record.domain}, won't re-check.`);
+            return record.expiry;
+        } else if (record) {
+            expiryDate = await record.getExpiryDate();
 
-            if (dayjs.utc(expiryDate).isAfter(dayjs.utc(bean.expiry))) {
-                bean.lastExpiryNotificationSent = null;
+            if (dayjs.utc(expiryDate).isAfter(dayjs.utc(record.expiry))) {
+                record.lastExpiryNotificationSent = null;
             }
 
-            bean.expiry = R.isoDateTimeMillis(expiryDate);
-            bean.lastCheck = R.isoDateTimeMillis(dayjs.utc());
-            await R.store(bean);
+            record.expiry = expiryDate ? new Date(expiryDate) : null;
+            record.lastCheck = new Date();
+            await record.save();
         }
 
         if (expiryDate === null) {
@@ -357,10 +358,29 @@ class DomainExpiry extends BeanModel {
                 );
                 if (sent) {
                     domain.lastExpiryNotificationSent = targetDays;
-                    await R.store(domain);
+                    await domain.save();
                     return targetDays;
                 }
             }
+        }
+    }
+    /**
+     * Save this DomainExpiry to the database (create if new, update if existing)
+     * @returns {Promise<void>}
+     */
+    async save() {
+        const prisma = getPrisma();
+        const data = {
+            domain: this.domain,
+            expiry: this.expiry ?? null,
+            lastCheck: this.lastCheck ?? null,
+            lastExpiryNotificationSent: this.lastExpiryNotificationSent ?? null,
+        };
+        if (this.id) {
+            await prisma.domainExpiry.update({ where: { id: this.id }, data });
+        } else {
+            const saved = await prisma.domainExpiry.create({ data });
+            this.id = saved.id;
         }
     }
 }

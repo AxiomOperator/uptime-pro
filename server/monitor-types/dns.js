@@ -1,7 +1,7 @@
 const { MonitorType } = require("./monitor-type");
 const { UP, log } = require("../../src/util");
 const dayjs = require("dayjs");
-const { R } = require("redbean-node");
+const { getPrisma } = require("../prisma");
 const { ConditionVariable } = require("../monitor-conditions/variables");
 const { defaultStringOperators } = require("../monitor-conditions/operators");
 const { ConditionExpressionGroup } = require("../monitor-conditions/expression");
@@ -88,7 +88,8 @@ class DnsMonitorType extends MonitorType {
         }
 
         if (monitor.dns_last_result !== dnsMessage && dnsMessage !== undefined) {
-            await R.exec("UPDATE `monitor` SET dns_last_result = ? WHERE id = ? ", [dnsMessage, monitor.id]);
+            const prisma = getPrisma();
+            await prisma.$executeRaw`UPDATE \`monitor\` SET dns_last_result = ${dnsMessage} WHERE id = ${monitor.id}`;
         }
 
         if (!conditionsResult) {

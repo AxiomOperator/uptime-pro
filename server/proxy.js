@@ -1,4 +1,4 @@
-const { R } = require("redbean-node");
+const { getPrisma } = require("./prisma");
 const { HttpProxyAgent } = require("http-proxy-agent");
 const { HttpsProxyAgent } = require("https-proxy-agent");
 const { SocksProxyAgent } = require("socks-proxy-agent");
@@ -15,19 +15,19 @@ class Proxy {
      * @param {object} proxy Proxy to store
      * @param {number} proxyID ID of proxy to update
      * @param {number} userID ID of user the proxy belongs to
-     * @returns {Promise<Bean>} Updated proxy
+     * @returns {Promise<object>} Updated proxy
      */
     static async save(proxy, proxyID, userID) {
-        let bean;
+        const prisma = getPrisma();
+        let recordId = null;
 
         if (proxyID) {
-            bean = await R.findOne("proxy", " id = ? AND user_id = ? ", [proxyID, userID]);
+            const existing = await prisma.proxy.findFirst({ where: { id: proxyID, userId: userID } });
 
-            if (!bean) {
+            if (!existing) {
                 throw new Error("proxy not found");
             }
-        } else {
-            bean = R.dispense("proxy");
+            recordId = proxyID;
         }
 
         // Make sure given proxy protocol is supported
@@ -39,26 +39,33 @@ class Proxy {
 
         // When proxy is default update deactivate old default proxy
         if (proxy.default) {
-            await R.exec("UPDATE proxy SET `default` = 0 WHERE `default` = 1");
+            await prisma.$executeRaw`UPDATE proxy SET \`default\` = 0 WHERE \`default\` = 1`;
         }
 
-        bean.user_id = userID;
-        bean.protocol = proxy.protocol;
-        bean.host = proxy.host;
-        bean.port = proxy.port;
-        bean.auth = proxy.auth;
-        bean.username = proxy.username;
-        bean.password = proxy.password;
-        bean.active = proxy.active || true;
-        bean.default = proxy.default || false;
+        const data = {
+            userId: userID,
+            protocol: proxy.protocol,
+            host: proxy.host,
+            port: proxy.port,
+            auth: proxy.auth,
+            username: proxy.username,
+            password: proxy.password,
+            active: proxy.active || true,
+            isDefault: proxy.default || false,
+        };
 
-        await R.store(bean);
+        let record;
+        if (recordId) {
+            record = await prisma.proxy.update({ where: { id: recordId }, data });
+        } else {
+            record = await prisma.proxy.create({ data });
+        }
 
         if (proxy.applyExisting) {
-            await applyProxyEveryMonitor(bean.id, userID);
+            await applyProxyEveryMonitor(record.id, userID);
         }
 
-        return bean;
+        return record;
     }
 
     /**
@@ -68,22 +75,23 @@ class Proxy {
      * @returns {Promise<void>}
      */
     static async delete(proxyID, userID) {
-        const bean = await R.findOne("proxy", " id = ? AND user_id = ? ", [proxyID, userID]);
+        const prisma = getPrisma();
+        const record = await prisma.proxy.findFirst({ where: { id: proxyID, userId: userID } });
 
-        if (!bean) {
+        if (!record) {
             throw new Error("proxy not found");
         }
 
         // Delete removed proxy from monitors if exists
-        await R.exec("UPDATE monitor SET proxy_id = null WHERE proxy_id = ?", [proxyID]);
+        await prisma.$executeRaw`UPDATE monitor SET proxy_id = null WHERE proxy_id = ${proxyID}`;
 
         // Delete proxy from list
-        await R.trash(bean);
+        await prisma.proxy.delete({ where: { id: record.id } });
     }
 
     /**
-     * Create HTTP and HTTPS agents related with given proxy bean object
-     * @param {object} proxy proxy bean object
+     * Create HTTP and HTTPS agents related with given proxy object
+     * @param {object} proxy proxy object
      * @param {object} options http and https agent options
      * @returns {{httpAgent: Agent, httpsAgent: Agent}} New HTTP and HTTPS agents
      * @throws Proxy protocol is unsupported
@@ -162,9 +170,11 @@ class Proxy {
      * @returns {Promise<void>}
      */
     static async reloadProxy() {
+        const prisma = getPrisma();
         const server = UptimeKumaServer.getInstance();
 
-        let updatedList = await R.getAssoc("SELECT id, proxy_id FROM monitor");
+        const rows = await prisma.$queryRaw`SELECT id, proxy_id FROM monitor`;
+        const updatedList = Object.fromEntries(rows.map((r) => [r.id, r]));
 
         for (let monitorID in server.monitorList) {
             let monitor = server.monitorList[monitorID];
@@ -183,13 +193,14 @@ class Proxy {
  * @returns {Promise<void>}
  */
 async function applyProxyEveryMonitor(proxyID, userID) {
+    const prisma = getPrisma();
     // Find all monitors with id and proxy id
-    const monitors = await R.getAll("SELECT id, proxy_id FROM monitor WHERE user_id = ?", [userID]);
+    const monitors = await prisma.$queryRaw`SELECT id, proxy_id FROM monitor WHERE user_id = ${userID}`;
 
     // Update proxy id not match with given proxy id
     for (const monitor of monitors) {
         if (monitor.proxy_id !== proxyID) {
-            await R.exec("UPDATE monitor SET proxy_id = ? WHERE id = ?", [proxyID, monitor.id]);
+            await prisma.$executeRaw`UPDATE monitor SET proxy_id = ${proxyID} WHERE id = ${monitor.id}`;
         }
     }
 }

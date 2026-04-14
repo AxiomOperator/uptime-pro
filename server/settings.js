@@ -1,5 +1,19 @@
-const { R } = require("redbean-node");
+const { getPrisma } = require("./prisma");
 const { log } = require("../src/util");
+
+/**
+ * Knex-based fallback for Settings.set/get used during initialization when
+ * the Prisma better-sqlite3 connection cannot yet see the fully-patched schema.
+ * @returns {import("knex").Knex | null}
+ */
+function getKnexFallback() {
+    try {
+        const Database = require("./database");
+        return Database.knexInstance ?? null;
+    } catch (_) {
+        return null;
+    }
+}
 
 class Settings {
     /**
@@ -46,7 +60,24 @@ class Settings {
             return v;
         }
 
-        let value = await R.getCell("SELECT `value` FROM setting WHERE `key` = ? ", [key]);
+        const prisma = getPrisma();
+        let value;
+        try {
+            value = (await prisma.$queryRaw`SELECT \`value\` FROM setting WHERE \`key\` = ${key}`)[0]?.value ?? null;
+        } catch (e) {
+            // During initialization Prisma may not yet see the setting table — fall back to knex
+            if (e.message && (e.message.includes("no such table") || e.message.includes("does not exist") || e.message.includes("doesn't exist") || e.message.includes("TableDoesNotExist"))) {
+                const knex = getKnexFallback();
+                if (knex) {
+                    const row = await knex("setting").where("key", key).first().catch(() => null);
+                    value = row ? row.value : null;
+                } else {
+                    return null;
+                }
+            } else {
+                throw e;
+            }
+        }
 
         try {
             const v = JSON.parse(value);
@@ -71,14 +102,32 @@ class Settings {
      * @returns {Promise<void>}
      */
     static async set(key, value, type = null) {
-        let bean = await R.findOne("setting", " `key` = ? ", [key]);
-        if (!bean) {
-            bean = R.dispense("setting");
-            bean.key = key;
+        const serialized = JSON.stringify(value);
+        try {
+            const prisma = getPrisma();
+            await prisma.setting.upsert({
+                where: { key },
+                update: { type, value: serialized },
+                create: { key, type, value: serialized },
+            });
+        } catch (e) {
+            // During initialization the Prisma better-sqlite3 connection may not yet
+            // see tables created by knex. Fall back to a raw knex upsert.
+            if (e.message && (e.message.includes("no such table") || e.message.includes("does not exist") || e.message.includes("doesn't exist") || e.message.includes("TableDoesNotExist"))) {
+                const knex = getKnexFallback();
+                if (knex) {
+                    const exists = await knex("setting").where("key", key).first().catch(() => null);
+                    if (exists) {
+                        await knex("setting").where("key", key).update({ type, value: serialized });
+                    } else {
+                        await knex("setting").insert({ key, type, value: serialized });
+                    }
+                    Settings.deleteCache([key]);
+                    return;
+                }
+            }
+            throw e;
         }
-        bean.type = type;
-        bean.value = JSON.stringify(value);
-        await R.store(bean);
 
         Settings.deleteCache([key]);
     }
@@ -86,10 +135,11 @@ class Settings {
     /**
      * Get settings based on type
      * @param {string} type The type of setting
-     * @returns {Promise<Bean>} Settings
+     * @returns {Promise<object>} Settings
      */
     static async getSettings(type) {
-        let list = await R.getAll("SELECT `key`, `value` FROM setting WHERE `type` = ? ", [type]);
+        const prisma = getPrisma();
+        let list = await prisma.$queryRaw`SELECT \`key\`, \`value\` FROM setting WHERE \`type\` = ${type}`;
 
         let result = {};
 
@@ -112,21 +162,21 @@ class Settings {
      */
     static async setSettings(type, data) {
         let keyList = Object.keys(data);
+        const prisma = getPrisma();
 
         let promiseList = [];
 
         for (let key of keyList) {
-            let bean = await R.findOne("setting", " `key` = ? ", [key]);
+            let record = await prisma.setting.findFirst({ where: { key } });
 
-            if (bean == null) {
-                bean = R.dispense("setting");
-                bean.type = type;
-                bean.key = key;
-            }
-
-            if (bean.type === type) {
-                bean.value = JSON.stringify(data[key]);
-                promiseList.push(R.store(bean));
+            if (record == null || record.type === type) {
+                promiseList.push(
+                    prisma.setting.upsert({
+                        where: { key },
+                        update: { value: JSON.stringify(data[key]) },
+                        create: { key, type, value: JSON.stringify(data[key]) },
+                    })
+                );
             }
         }
 

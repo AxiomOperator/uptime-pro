@@ -2,7 +2,8 @@ const dayjs = require("dayjs");
 const { UP, MAINTENANCE, DOWN, PENDING } = require("../src/util");
 const { LimitQueue } = require("./utils/limit-queue");
 const { log } = require("../src/util");
-const { R } = require("redbean-node");
+const { getPrisma } = require("./prisma");
+const prisma = getPrisma();
 
 /**
  * Calculates the uptime of a monitor.
@@ -50,9 +51,9 @@ class UptimeCalculator {
     lastHourlyUptimeData = null;
     lastDailyUptimeData = null;
 
-    lastDailyStatBean = null;
-    lastHourlyStatBean = null;
-    lastMinutelyStatBean = null;
+    lastDailyStatRecord = null;
+    lastHourlyStatRecord = null;
+    lastMinutelyStatRecord = null;
 
     /**
      * For migration purposes.
@@ -121,84 +122,84 @@ class UptimeCalculator {
      * @returns {Promise<void>}
      */
     async init(monitorID) {
-        this.monitorID = monitorID;
+        this.monitorID = parseInt(monitorID);
 
         let now = this.getCurrentDate();
 
         // Load minutely data from database (recent 24 hours only)
-        let minutelyStatBeans = await R.find("stat_minutely", " monitor_id = ? AND timestamp > ? ORDER BY timestamp", [
-            monitorID,
-            this.getMinutelyKey(now.subtract(24, "hour")),
-        ]);
+        let minutelyStatRecords = await prisma.statMinutely.findMany({
+            where: { monitorId: monitorID, timestamp: { gt: this.getMinutelyKey(now.subtract(24, "hour")) } },
+            orderBy: { timestamp: "asc" },
+        });
 
-        for (let bean of minutelyStatBeans) {
+        for (let record of minutelyStatRecords) {
             let data = {
-                up: bean.up,
-                down: bean.down,
-                avgPing: bean.ping,
-                minPing: bean.pingMin,
-                maxPing: bean.pingMax,
+                up: record.up,
+                down: record.down,
+                avgPing: record.ping,
+                minPing: record.pingMin,
+                maxPing: record.pingMax,
             };
 
-            if (bean.extras != null) {
+            if (record.extras != null) {
                 data = {
                     ...data,
-                    ...JSON.parse(bean.extras),
+                    ...JSON.parse(record.extras),
                 };
             }
 
-            let key = bean.timestamp;
+            let key = record.timestamp;
             this.minutelyUptimeDataList.push(key, data);
         }
 
         // Load hourly data from database (recent 30 days only)
-        let hourlyStatBeans = await R.find("stat_hourly", " monitor_id = ? AND timestamp > ? ORDER BY timestamp", [
-            monitorID,
-            this.getHourlyKey(now.subtract(30, "day")),
-        ]);
+        let hourlyStatRecords = await prisma.statHourly.findMany({
+            where: { monitorId: monitorID, timestamp: { gt: this.getHourlyKey(now.subtract(30, "day")) } },
+            orderBy: { timestamp: "asc" },
+        });
 
-        for (let bean of hourlyStatBeans) {
+        for (let record of hourlyStatRecords) {
             let data = {
-                up: bean.up,
-                down: bean.down,
-                avgPing: bean.ping,
-                minPing: bean.pingMin,
-                maxPing: bean.pingMax,
+                up: record.up,
+                down: record.down,
+                avgPing: record.ping,
+                minPing: record.pingMin,
+                maxPing: record.pingMax,
             };
 
-            if (bean.extras != null) {
+            if (record.extras != null) {
                 data = {
                     ...data,
-                    ...JSON.parse(bean.extras),
+                    ...JSON.parse(record.extras),
                 };
             }
 
-            this.hourlyUptimeDataList.push(bean.timestamp, data);
+            this.hourlyUptimeDataList.push(record.timestamp, data);
         }
 
         // Load daily data from database (recent 365 days only)
-        let dailyStatBeans = await R.find("stat_daily", " monitor_id = ? AND timestamp > ? ORDER BY timestamp", [
-            monitorID,
-            this.getDailyKey(now.subtract(365, "day")),
-        ]);
+        let dailyStatRecords = await prisma.statDaily.findMany({
+            where: { monitorId: monitorID, timestamp: { gt: this.getDailyKey(now.subtract(365, "day")) } },
+            orderBy: { timestamp: "asc" },
+        });
 
-        for (let bean of dailyStatBeans) {
+        for (let record of dailyStatRecords) {
             let data = {
-                up: bean.up,
-                down: bean.down,
-                avgPing: bean.ping,
-                minPing: bean.pingMin,
-                maxPing: bean.pingMax,
+                up: record.up,
+                down: record.down,
+                avgPing: record.ping,
+                minPing: record.pingMin,
+                maxPing: record.pingMax,
             };
 
-            if (bean.extras != null) {
+            if (record.extras != null) {
                 data = {
                     ...data,
-                    ...JSON.parse(bean.extras),
+                    ...JSON.parse(record.extras),
                 };
             }
 
-            this.dailyUptimeDataList.push(bean.timestamp, data);
+            this.dailyUptimeDataList.push(record.timestamp, data);
         }
     }
 
@@ -299,59 +300,71 @@ class UptimeCalculator {
             return date;
         }
 
-        let dailyStatBean = await this.getDailyStatBean(dailyKey);
-        dailyStatBean.up = dailyData.up;
-        dailyStatBean.down = dailyData.down;
-        dailyStatBean.ping = dailyData.avgPing;
-        dailyStatBean.pingMin = dailyData.minPing;
-        dailyStatBean.pingMax = dailyData.maxPing;
+        let dailyStatRecord = await this.getDailyStatRecord(dailyKey);
+        dailyStatRecord.up = dailyData.up;
+        dailyStatRecord.down = dailyData.down;
+        dailyStatRecord.ping = dailyData.avgPing;
+        dailyStatRecord.pingMin = dailyData.minPing;
+        dailyStatRecord.pingMax = dailyData.maxPing;
         {
             // eslint-disable-next-line no-unused-vars
             const { up, down, avgPing, minPing, maxPing, timestamp, ...extras } = dailyData;
             if (Object.keys(extras).length > 0) {
-                dailyStatBean.extras = JSON.stringify(extras);
+                dailyStatRecord.extras = JSON.stringify(extras);
             }
         }
-        await R.store(dailyStatBean);
+        await prisma.statDaily.upsert({
+            where: { monitorId_timestamp: { monitorId: dailyStatRecord.monitorId, timestamp: dailyStatRecord.timestamp } },
+            update: { up: dailyStatRecord.up, down: dailyStatRecord.down, ping: dailyStatRecord.ping, pingMin: dailyStatRecord.pingMin, pingMax: dailyStatRecord.pingMax, extras: dailyStatRecord.extras ?? null },
+            create: { monitorId: dailyStatRecord.monitorId, timestamp: dailyStatRecord.timestamp, up: dailyStatRecord.up, down: dailyStatRecord.down, ping: dailyStatRecord.ping, pingMin: dailyStatRecord.pingMin, pingMax: dailyStatRecord.pingMax, extras: dailyStatRecord.extras ?? null },
+        });
 
         let currentDate = this.getCurrentDate();
 
         // For migration mode, we don't need to store old hourly and minutely data, but we need 30-day's hourly data
         // Run anyway for non-migration mode
         if (!this.migrationMode || date.isAfter(currentDate.subtract(this.statHourlyKeepDay, "day"))) {
-            let hourlyStatBean = await this.getHourlyStatBean(hourlyKey);
-            hourlyStatBean.up = hourlyData.up;
-            hourlyStatBean.down = hourlyData.down;
-            hourlyStatBean.ping = hourlyData.avgPing;
-            hourlyStatBean.pingMin = hourlyData.minPing;
-            hourlyStatBean.pingMax = hourlyData.maxPing;
+            let hourlyStatRecord = await this.getHourlyStatRecord(hourlyKey);
+            hourlyStatRecord.up = hourlyData.up;
+            hourlyStatRecord.down = hourlyData.down;
+            hourlyStatRecord.ping = hourlyData.avgPing;
+            hourlyStatRecord.pingMin = hourlyData.minPing;
+            hourlyStatRecord.pingMax = hourlyData.maxPing;
             {
                 // eslint-disable-next-line no-unused-vars
                 const { up, down, avgPing, minPing, maxPing, timestamp, ...extras } = hourlyData;
                 if (Object.keys(extras).length > 0) {
-                    hourlyStatBean.extras = JSON.stringify(extras);
+                    hourlyStatRecord.extras = JSON.stringify(extras);
                 }
             }
-            await R.store(hourlyStatBean);
+            await prisma.statHourly.upsert({
+                where: { monitorId_timestamp: { monitorId: hourlyStatRecord.monitorId, timestamp: hourlyStatRecord.timestamp } },
+                update: { up: hourlyStatRecord.up, down: hourlyStatRecord.down, ping: hourlyStatRecord.ping, pingMin: hourlyStatRecord.pingMin, pingMax: hourlyStatRecord.pingMax, extras: hourlyStatRecord.extras ?? null },
+                create: { monitorId: hourlyStatRecord.monitorId, timestamp: hourlyStatRecord.timestamp, up: hourlyStatRecord.up, down: hourlyStatRecord.down, ping: hourlyStatRecord.ping, pingMin: hourlyStatRecord.pingMin, pingMax: hourlyStatRecord.pingMax, extras: hourlyStatRecord.extras ?? null },
+            });
         }
 
         // For migration mode, we don't need to store old hourly and minutely data, but we need 24-hour's minutely data
         // Run anyway for non-migration mode
         if (!this.migrationMode || date.isAfter(currentDate.subtract(this.statMinutelyKeepHour, "hour"))) {
-            let minutelyStatBean = await this.getMinutelyStatBean(divisionKey);
-            minutelyStatBean.up = minutelyData.up;
-            minutelyStatBean.down = minutelyData.down;
-            minutelyStatBean.ping = minutelyData.avgPing;
-            minutelyStatBean.pingMin = minutelyData.minPing;
-            minutelyStatBean.pingMax = minutelyData.maxPing;
+            let minutelyStatRecord = await this.getMinutelyStatRecord(divisionKey);
+            minutelyStatRecord.up = minutelyData.up;
+            minutelyStatRecord.down = minutelyData.down;
+            minutelyStatRecord.ping = minutelyData.avgPing;
+            minutelyStatRecord.pingMin = minutelyData.minPing;
+            minutelyStatRecord.pingMax = minutelyData.maxPing;
             {
                 // eslint-disable-next-line no-unused-vars
                 const { up, down, avgPing, minPing, maxPing, timestamp, ...extras } = minutelyData;
                 if (Object.keys(extras).length > 0) {
-                    minutelyStatBean.extras = JSON.stringify(extras);
+                    minutelyStatRecord.extras = JSON.stringify(extras);
                 }
             }
-            await R.store(minutelyStatBean);
+            await prisma.statMinutely.upsert({
+                where: { monitorId_timestamp: { monitorId: minutelyStatRecord.monitorId, timestamp: minutelyStatRecord.timestamp } },
+                update: { up: minutelyStatRecord.up, down: minutelyStatRecord.down, ping: minutelyStatRecord.ping, pingMin: minutelyStatRecord.pingMin, pingMax: minutelyStatRecord.pingMax, extras: minutelyStatRecord.extras ?? null },
+                create: { monitorId: minutelyStatRecord.monitorId, timestamp: minutelyStatRecord.timestamp, up: minutelyStatRecord.up, down: minutelyStatRecord.down, ping: minutelyStatRecord.ping, pingMin: minutelyStatRecord.pingMin, pingMax: minutelyStatRecord.pingMax, extras: minutelyStatRecord.extras ?? null },
+            });
         }
 
         // No need to remove old data in migration mode
@@ -359,84 +372,72 @@ class UptimeCalculator {
             // Remove the old data
             // TODO: Improvement: Convert it to a job?
             log.debug("uptime_calc", "Remove old data");
-            await R.exec("DELETE FROM stat_minutely WHERE monitor_id = ? AND timestamp < ?", [
-                this.monitorID,
-                this.getMinutelyKey(currentDate.subtract(this.statMinutelyKeepHour, "hour"), false),
-            ]);
+            await prisma.$executeRaw`DELETE FROM stat_minutely WHERE monitor_id = ${this.monitorID} AND timestamp < ${this.getMinutelyKey(currentDate.subtract(this.statMinutelyKeepHour, "hour"), false)}`;
 
-            await R.exec("DELETE FROM stat_hourly WHERE monitor_id = ? AND timestamp < ?", [
-                this.monitorID,
-                this.getHourlyKey(currentDate.subtract(this.statHourlyKeepDay, "day"), false),
-            ]);
+            await prisma.$executeRaw`DELETE FROM stat_hourly WHERE monitor_id = ${this.monitorID} AND timestamp < ${this.getHourlyKey(currentDate.subtract(this.statHourlyKeepDay, "day"), false)}`;
         }
 
         return date;
     }
 
     /**
-     * Get the daily stat bean
+     * Get the daily stat record
      * @param {number} timestamp milliseconds
-     * @returns {Promise<import("redbean-node").Bean>} stat_daily bean
+     * @returns {Promise<object>} stat_daily object
      */
-    async getDailyStatBean(timestamp) {
-        if (this.lastDailyStatBean && this.lastDailyStatBean.timestamp === timestamp) {
-            return this.lastDailyStatBean;
+    async getDailyStatRecord(timestamp) {
+        if (this.lastDailyStatRecord && this.lastDailyStatRecord.timestamp === timestamp) {
+            return this.lastDailyStatRecord;
         }
 
-        let bean = await R.findOne("stat_daily", " monitor_id = ? AND timestamp = ?", [this.monitorID, timestamp]);
+        let record = await prisma.statDaily.findFirst({ where: { monitorId: this.monitorID, timestamp: timestamp } });
 
-        if (!bean) {
-            bean = R.dispense("stat_daily");
-            bean.monitor_id = this.monitorID;
-            bean.timestamp = timestamp;
+        if (!record) {
+            record = { monitorId: this.monitorID, timestamp: timestamp };
         }
 
-        this.lastDailyStatBean = bean;
-        return this.lastDailyStatBean;
+        this.lastDailyStatRecord = record;
+        return this.lastDailyStatRecord;
     }
 
     /**
-     * Get the hourly stat bean
+     * Get the hourly stat record
      * @param {number} timestamp milliseconds
-     * @returns {Promise<import("redbean-node").Bean>} stat_hourly bean
+     * @returns {Promise<object>} stat_hourly object
      */
-    async getHourlyStatBean(timestamp) {
-        if (this.lastHourlyStatBean && this.lastHourlyStatBean.timestamp === timestamp) {
-            return this.lastHourlyStatBean;
+    async getHourlyStatRecord(timestamp) {
+        if (this.lastHourlyStatRecord && this.lastHourlyStatRecord.timestamp === timestamp) {
+            return this.lastHourlyStatRecord;
         }
 
-        let bean = await R.findOne("stat_hourly", " monitor_id = ? AND timestamp = ?", [this.monitorID, timestamp]);
+        let record = await prisma.statHourly.findFirst({ where: { monitorId: this.monitorID, timestamp: timestamp } });
 
-        if (!bean) {
-            bean = R.dispense("stat_hourly");
-            bean.monitor_id = this.monitorID;
-            bean.timestamp = timestamp;
+        if (!record) {
+            record = { monitorId: this.monitorID, timestamp: timestamp };
         }
 
-        this.lastHourlyStatBean = bean;
-        return this.lastHourlyStatBean;
+        this.lastHourlyStatRecord = record;
+        return this.lastHourlyStatRecord;
     }
 
     /**
-     * Get the minutely stat bean
+     * Get the minutely stat record
      * @param {number} timestamp milliseconds
-     * @returns {Promise<import("redbean-node").Bean>} stat_minutely bean
+     * @returns {Promise<object>} stat_minutely object
      */
-    async getMinutelyStatBean(timestamp) {
-        if (this.lastMinutelyStatBean && this.lastMinutelyStatBean.timestamp === timestamp) {
-            return this.lastMinutelyStatBean;
+    async getMinutelyStatRecord(timestamp) {
+        if (this.lastMinutelyStatRecord && this.lastMinutelyStatRecord.timestamp === timestamp) {
+            return this.lastMinutelyStatRecord;
         }
 
-        let bean = await R.findOne("stat_minutely", " monitor_id = ? AND timestamp = ?", [this.monitorID, timestamp]);
+        let record = await prisma.statMinutely.findFirst({ where: { monitorId: this.monitorID, timestamp: timestamp } });
 
-        if (!bean) {
-            bean = R.dispense("stat_minutely");
-            bean.monitor_id = this.monitorID;
-            bean.timestamp = timestamp;
+        if (!record) {
+            record = { monitorId: this.monitorID, timestamp: timestamp };
         }
 
-        this.lastMinutelyStatBean = bean;
-        return this.lastMinutelyStatBean;
+        this.lastMinutelyStatRecord = record;
+        return this.lastMinutelyStatRecord;
     }
 
     /**
@@ -850,11 +851,11 @@ class UptimeCalculator {
      * @returns {Promise<void>}
      */
     static async clearStatistics(monitorID) {
-        await R.exec("DELETE FROM heartbeat WHERE monitor_id = ?", [monitorID]);
+        await prisma.$executeRaw`DELETE FROM heartbeat WHERE monitor_id = ${monitorID}`;
 
-        await R.exec("DELETE FROM stat_minutely WHERE monitor_id = ?", [monitorID]);
-        await R.exec("DELETE FROM stat_hourly WHERE monitor_id = ?", [monitorID]);
-        await R.exec("DELETE FROM stat_daily WHERE monitor_id = ?", [monitorID]);
+        await prisma.$executeRaw`DELETE FROM stat_minutely WHERE monitor_id = ${monitorID}`;
+        await prisma.$executeRaw`DELETE FROM stat_hourly WHERE monitor_id = ${monitorID}`;
+        await prisma.$executeRaw`DELETE FROM stat_daily WHERE monitor_id = ${monitorID}`;
 
         await UptimeCalculator.remove(monitorID);
     }
@@ -864,10 +865,10 @@ class UptimeCalculator {
      * @returns {Promise<void>}
      */
     static async clearAllStatistics() {
-        await R.exec("DELETE FROM heartbeat");
-        await R.exec("DELETE FROM stat_minutely");
-        await R.exec("DELETE FROM stat_hourly");
-        await R.exec("DELETE FROM stat_daily");
+        await prisma.$executeRaw`DELETE FROM heartbeat`;
+        await prisma.$executeRaw`DELETE FROM stat_minutely`;
+        await prisma.$executeRaw`DELETE FROM stat_hourly`;
+        await prisma.$executeRaw`DELETE FROM stat_daily`;
 
         await UptimeCalculator.removeAll();
     }

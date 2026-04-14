@@ -1,6 +1,6 @@
 const PrometheusClient = require("prom-client");
 const { log } = require("../src/util");
-const { R } = require("redbean-node");
+const { getPrisma } = require("./prisma");
 
 let monitorCertDaysRemaining = null;
 let monitorCertIsValid = null;
@@ -38,8 +38,9 @@ class Prometheus {
     static async init() {
         // Add all available tags as possible labels,
         // and use Set to remove possible duplicates (for when multiple tags contain non-ascii characters, and thus are sanitized to the same label)
+        const prisma = getPrisma();
         const tags = new Set(
-            (await R.findAll("tag"))
+            (await prisma.tag.findMany({}))
                 .map((tag) => {
                     return Prometheus.sanitizeForPrometheus(tag.name);
                 })
