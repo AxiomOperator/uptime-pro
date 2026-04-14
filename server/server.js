@@ -243,8 +243,10 @@ let needSetup = false;
     // Register Fastify plugins
     await app.register(require("@fastify/cors"), { origin: isDev ? "*" : false });
     await app.register(require("@fastify/helmet"), {
-        contentSecurityPolicy: false, // CSP disabled for SPA (Vue/Vite inline scripts)
-        crossOriginEmbedderPolicy: false // Allow embedding for status page iframe use cases
+        contentSecurityPolicy: false,      // CSP disabled for SPA (Vue/Vite inline scripts)
+        crossOriginEmbedderPolicy: false,  // Allow embedding for status page iframe use cases
+        crossOriginOpenerPolicy: false,    // Requires HTTPS; causes browser noise over HTTP
+        originAgentCluster: false          // Requires HTTPS; causes agent-cluster conflict over HTTP
     });
     await app.register(require("@fastify/formbody"));
     await app.register(require("@fastify/compress"));
