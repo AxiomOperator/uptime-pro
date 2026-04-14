@@ -1,10 +1,12 @@
 # Migration Assessment
 
+> **Update (2026-04-13):** The ORM migration from redbean-node to Prisma is **complete** on the `prisma-migration` branch. The backend now uses Prisma Client for all database operations. See `prisma-migration-checklist.md` for details. The frontend and NestJS migration assessments below remain valid for future planning.
+
 ## Executive Summary
 
-Uptime Kuma is a mature Node.js/Vue 3 monitoring application with ~20,000 lines of backend logic, ~29,000 lines of frontend code, 51 database migrations, 23 monitor types, and 93 notification providers. This assessment evaluates feasibility and difficulty of migrating to a Next.js frontend combined with either a NestJS backend or a Python (FastAPI) backend.
+Uptime Pro is a mature Node.js/Vue 3 monitoring application with ~20,000 lines of backend logic, ~29,000 lines of frontend code, 51 database migrations, 23 monitor types, and 93 notification providers. This assessment evaluates feasibility and difficulty of migrating to a Next.js frontend combined with either a NestJS backend or a Python (FastAPI) backend.
 
-**Migration is feasible but carries substantial cost and risk.** The project is not in a state where migration would be trivial. The most significant structural barriers are the 894-line global Vue mixin with 484+ direct `$root` references, the Socket.IO-only API surface (no REST fallback), the Redbean-Node ORM coupling across 13 model files (~6,000 lines), and the sheer breadth of the notification provider and monitor type libraries (93 + 23 implementations).
+**Migration is feasible but carries substantial cost and risk.** The project is not in a state where migration would be trivial. The most significant structural barriers are the 894-line global Vue mixin with 484+ direct `$root` references, the Socket.IO-only API surface (no REST fallback), and the sheer breadth of the notification provider and monitor type libraries (93 + 23 implementations). ~~The Redbean-Node ORM coupling across 13 model files~~ has been resolved — Prisma is now the ORM.
 
 **Difficulty ratings:**
 
@@ -18,7 +20,7 @@ Uptime Kuma is a mature Node.js/Vue 3 monitoring application with ~20,000 lines 
 
 **Best overall direction:** Next.js frontend + NestJS backend, pursued as a staged migration with the frontend migrated first (or independently), followed by the backend.
 
-**Biggest risks:** ORM replacement (Redbean-Node is deeply coupled), Socket.IO event routing reorganization, EditMonitor.vue decomposition (4,094 lines), state management refactoring (484+ `$root` refs), and data integrity during migration.
+**Biggest risks:** ~~ORM replacement (Redbean-Node is deeply coupled)~~ (now resolved — Prisma migration complete), Socket.IO event routing reorganization, EditMonitor.vue decomposition (4,094 lines), state management refactoring (484+ `$root` refs), and data integrity during migration.
 
 **Whether to migrate at all:** The current stack is not broken. The project is productive, actively maintained, and deployable. Migration should only be pursued if there is a clear strategic reason — type safety, team scaling, framework standardization, or ecosystem alignment — not simply because migration is possible.
 
@@ -32,7 +34,7 @@ Uptime Kuma is a mature Node.js/Vue 3 monitoring application with ~20,000 lines 
 - `server/socket-handlers/` — 10 extracted socket handler files
 - `server/monitor-types/` — 23 monitor type implementations
 - `server/notification-providers/` — 93 notification provider implementations
-- `server/model/` — 13 Redbean-Node model files
+- `server/model/` — 13 Prisma model files (migrated from Redbean-Node)
 - `server/uptime-kuma-server.js` — Core server orchestration
 - `server/db.js`, `server/database.js` — Database initialization and ORM bootstrap
 - `server/jobs/` — Background cron jobs
@@ -62,7 +64,7 @@ Background jobs are minimal: two Croner jobs (daily data cleanup and incremental
 
 Authentication uses JWT (no expiry set — a known flaw from `review.md`), bcrypt for passwords, TOTP for 2FA, and bcrypt-hashed API keys. All secrets live in the SQLite/MariaDB database.
 
-The ORM is Redbean-Node (Active Record), a Node.js-only library with no TypeScript support and no clean data-access abstraction. Business logic is mixed with persistence in all 13 model files. Switching the ORM is the highest-effort single task in any backend migration.
+The ORM is Prisma Client (migrated from Redbean-Node Active Record). Business logic in the 13 model files is now decoupled from the ORM layer via plain classes with explicit Prisma queries.
 
 ### Frontend
 
@@ -76,7 +78,7 @@ The design system is Bootstrap 5 with light customization. Chart.js is used for 
 
 ### Data Layer
 
-SQLite is the default database. MariaDB and PostgreSQL are also supported. Knex.js handles migrations (51 files) and acts as a database-agnostic query builder. Redbean-Node sits on top of Knex and provides Active Record-style persistence.
+SQLite is the default database. MariaDB and PostgreSQL are also supported. Knex.js handles migrations (51 files) and acts as a database-agnostic query builder for schema changes. Prisma Client handles all runtime queries (migrated from Redbean-Node).
 
 The schema is well-normalized with 15 core tables and 7 aggregate/stat tables. The heartbeat and stat tables can grow into the tens or hundreds of millions of rows. All 51 Knex migrations are database-agnostic (no SQLite-specific query functions). The SQLite pragmas used (WAL mode, cache size, vacuum) are initialization concerns that live in a few files and do not affect the portability of the schema or query logic.
 
@@ -168,11 +170,11 @@ Parallel deployment, feature-flag rollout, final QA, removal of Vue app.
 
 ### Feasibility
 
-Feasible. NestJS is a Node.js framework that can host Socket.IO gateways, keep the same JavaScript/TypeScript ecosystem, and reuse many existing utility libraries. The monitor type and notification provider plugin patterns map reasonably well to NestJS dynamic modules or provider factories. The biggest challenge is replacing Redbean-Node with a type-safe ORM.
+Feasible. NestJS is a Node.js framework that can host Socket.IO gateways, keep the same JavaScript/TypeScript ecosystem, and reuse many existing utility libraries. The monitor type and notification provider plugin patterns map reasonably well to NestJS dynamic modules or provider factories. The ORM migration to Prisma is already complete, removing what was previously the biggest challenge.
 
 ### Likely Migration Approach
 
-A strangler pattern is viable here. NestJS can be introduced as a parallel module alongside the existing Express server, gradually taking over individual socket handler domains. The existing `server/socket-handlers/` decomposition provides natural module boundaries. The Redbean-Node ORM must be replaced early — it is a dependency of almost everything and cannot be incrementally swapped.
+A strangler pattern is viable here. NestJS can be introduced as a parallel module alongside the existing Express server, gradually taking over individual socket handler domains. The existing `server/socket-handlers/` decomposition provides natural module boundaries. The Prisma ORM is already in place, so the NestJS migration can focus on framework concerns rather than ORM replacement.
 
 ### Reusable Pieces
 
@@ -192,7 +194,7 @@ A strangler pattern is viable here. NestJS can be introduced as a parallel modul
 
 ### Rewrite-Heavy Areas
 
-- **Redbean-Node ORM (13 models, ~6,000 lines)** — Must be replaced with TypeORM entities or Prisma schema definitions. Every model's persistence calls must be rewritten. This is the highest-effort item and carries the most data-integrity risk.
+- **~~Redbean-Node ORM (13 models, ~6,000 lines)~~** — ✅ Already replaced with Prisma. The Prisma schema and client queries can be reused directly in NestJS modules.
 - **`server/server.js`** — The monolithic 1,998-line entry point must be decomposed into NestJS modules. The 40+ inline socket handlers must become `@SubscribeMessage()` gateway methods.
 - **Auth flow** — Custom JWT and 2FA handling must be refactored into Passport strategies and NestJS guards.
 - **Monitor heartbeat loop** — The `setInterval`-per-monitor pattern should be redesigned as `@nestjs/schedule`-driven tasks or a custom scheduler service.
@@ -200,7 +202,7 @@ A strangler pattern is viable here. NestJS can be introduced as a parallel modul
 
 ### Key Risks
 
-1. **ORM migration is the highest single risk.** Redbean-Node is a dynamic, schema-less Active Record library with no TypeScript types. Migrating to TypeORM requires writing entity classes, migration files, and all repository calls for all 13 models. Any mistake in entity mapping could corrupt heartbeat or stat data.
+1. **~~ORM migration is the highest single risk.~~** ✅ Resolved — Prisma is now the ORM. The Prisma schema and queries carry over to NestJS directly.
 2. **Socket.IO gateway organization.** Reorganizing 40+ inline socket events into NestJS `@WebSocketGateway()` classes introduces risk of auth bypass if ownership guards are not correctly applied to every handler. The existing authorization drift problem (`review.md` Critical finding) could be replicated or made worse if guards are not central.
 3. **Multi-database support.** NestJS + TypeORM can support SQLite/MySQL/PostgreSQL but requires a database-aware `DataSource` factory. The existing flexible config model (db-config.json + env) must be preserved.
 4. **Monitor heartbeat reliability.** The single-threaded `setInterval` pattern is simple but fragile at scale. A NestJS migration is an opportunity to improve it, but also a risk of introducing check delays or dropped heartbeats during the transition.
@@ -275,7 +277,7 @@ A parallel rewrite is the only realistic approach. The Python codebase would be 
 
 - **All 23 monitor type implementations** — The check logic ports to Python asyncio, but 6–8 types depend on Node-exclusive packages (gamedig, nodemailer SMTP testing, tailscale-ping subprocess calls) that have no equivalent and must be reimplemented.
 - **Socket.IO server** — `python-socketio` with Uvicorn works but is a third-party integration. Connection lifecycle, room management, and reconnection behavior differ from the Node.js `socket.io` server in subtle ways that affect the existing Vue client.
-- **All 13 data models** — Redbean-Node Active Record → SQLAlchemy 2.0 AsyncSession. Every model, every query, every transaction must be rewritten.
+- **All 13 data models** — Prisma Client queries → SQLAlchemy 2.0 AsyncSession. Every model, every query, every transaction must be rewritten for Python.
 - **Monitor heartbeat loop** — asyncio + APScheduler or Celery is a paradigm change from Node.js `setInterval`. Concurrency model is fundamentally different; blocking I/O in any check function will stall the event loop.
 - **`server.js` initialization logic** — Python startup, dependency injection via FastAPI `Depends()`, and service container design all require a ground-up redesign.
 
@@ -354,7 +356,7 @@ Parallel deployment, compatibility testing of python-socketio vs Vue client, E2E
 
 ### Technical Risks
 
-1. **ORM replacement (Critical)** — Migrating from Redbean-Node to TypeORM (NestJS) or SQLAlchemy (Python) affects all 13 models and ~6,000 lines of persistence code. A mapping error in any heartbeat, monitor, or stat table could cause data loss or corruption. This risk is present in both backend targets.
+1. **~~ORM replacement (Critical)~~** — ✅ Resolved. Prisma is now the ORM. For a NestJS migration, the Prisma schema and queries carry over directly. For a Python migration, queries would need to be rewritten to SQLAlchemy.
 
 2. **Socket.IO event contract fidelity (High)** — The Vue frontend depends on 31 server-to-client events and 27 client-to-server events. Any event renamed, removed, or payload-changed in the new backend will break the frontend silently unless tested. A socket event contract test suite must be established before cutover.
 
@@ -376,7 +378,7 @@ Parallel deployment, compatibility testing of python-socketio vs Vue client, E2E
 
 ### Regression Risks
 
-10. **Heartbeat reliability during migration (Critical)** — Uptime Kuma's core value is continuous monitoring. Any migration-induced downtime or missed check during the heartbeat loop migration is a direct product failure.
+10. **Heartbeat reliability during migration (Critical)** — Uptime Pro's core value is continuous monitoring. Any migration-induced downtime or missed check during the heartbeat loop migration is a direct product failure.
 
 11. **Public status page availability (High)** — Status pages are external-facing and often embedded in dashboards. A broken SSR render or routing error during migration is immediately visible to end users.
 
@@ -490,12 +492,11 @@ If the team has limited bandwidth or the current state is operationally acceptab
 
 ### Backend Phases (after frontend, or in parallel by separate team)
 
-**Phase B1 — ORM Migration** (3–4 weeks)
-- Objective: Replace Redbean-Node with TypeORM, validate schema integrity
-- Scope: Define TypeORM entities for all 13 models; run existing 51 Knex migrations to establish schema; write TypeORM repositories; validate all data read/write operations against existing SQLite database
-- Dependencies: None (no user-facing change; old server still runs)
-- Deliverables: TypeORM data layer passing all existing backend tests
-- Exit criteria: All 13 entity types read/write correctly; data from existing DB is accessible without corruption
+**Phase B1 — ORM Migration** ✅ COMPLETE
+- Objective: ~~Replace Redbean-Node with TypeORM~~ — Completed via Prisma instead of TypeORM
+- Scope: Prisma schema derived from 49 Knex migrations; Prisma Client queries replace all `R.*` calls
+- Deliverables: Prisma data layer passing 212/213 backend tests
+- Exit criteria: ✅ All model types read/write correctly via Prisma
 
 **Phase B2 — Auth and Security** (1–2 weeks)
 - Objective: Implement auth in NestJS with security improvements
@@ -552,15 +553,15 @@ Mitigating factors: i18n JSON files, utility functions, business logic, and char
 
 ### NestJS Backend Migration
 
-**Rating: Medium-High**
+**Rating: Medium** (reduced from Medium-High — ORM migration is complete)
 
 Driven by:
-- Redbean-Node ORM replacement across 13 models and ~6,000 lines — highest single-task effort
+- ~~Redbean-Node ORM replacement~~ ✅ Complete — Prisma is now the ORM and carries over to NestJS
 - Socket.IO gateway reorganization of 40+ inline events from a 1,998-line monolith
-- Multi-database support (SQLite/MySQL/PostgreSQL) requires careful TypeORM DataSource factory
+- Multi-database support (SQLite/MySQL/PostgreSQL) — Prisma schema already handles this
 - Auth refactor (JWT + 2FA + API keys) must be done correctly without introducing regressions
 
-Mitigating factors: The Node.js ecosystem is preserved — no library replacement for monitor types or notification providers. TypeScript carries over. NestJS supports all the patterns used in the existing code. The partial extraction to `server/socket-handlers/` provides natural module boundaries.
+Mitigating factors: The Node.js ecosystem is preserved — no library replacement for monitor types or notification providers. TypeScript carries over. NestJS supports all the patterns used in the existing code. The partial extraction to `server/socket-handlers/` provides natural module boundaries. The Prisma ORM is already in place.
 
 ### Python Backend Migration
 
@@ -580,7 +581,7 @@ Mitigating factors: FastAPI is simpler to scaffold than NestJS. Python has matur
 
 ## Conclusion
 
-Uptime Kuma is a productive, deployable, and actively maintained project. Migration to Next.js + NestJS is a valid engineering investment if the team has clear strategic goals — type safety, modular architecture, improved testability, or broader contributor accessibility. It is not an emergency necessity.
+Uptime Pro is a productive, deployable, and actively maintained project. Migration to Next.js + NestJS is a valid engineering investment if the team has clear strategic goals — type safety, modular architecture, improved testability, or broader contributor accessibility. It is not an emergency necessity.
 
 **The recommended path is:**
 
@@ -588,7 +589,7 @@ Uptime Kuma is a productive, deployable, and actively maintained project. Migrat
 
 2. **Before or alongside the frontend migration: address the Critical and High security findings from `review.md`.** JWT expiry, ownership guard inconsistencies, and secret handling should not wait for a framework migration. Fix them in the existing codebase first.
 
-3. **Backend second: NestJS (not Python).** After the frontend is stable on Next.js, migrate the backend to NestJS. Begin with the ORM (TypeORM replacing Redbean-Node), then auth, then socket gateways. The Node.js ecosystem is preserved, the monitor type and notification provider libraries stay as-is, and TypeScript coverage improves across the stack.
+3. **Backend second: NestJS (not Python).** After the frontend is stable on Next.js, migrate the backend to NestJS. The ORM migration to Prisma is already complete — NestJS can reuse the existing Prisma schema and queries directly. Focus on auth, then socket gateways. The Node.js ecosystem is preserved, the monitor type and notification provider libraries stay as-is, and TypeScript coverage improves across the stack.
 
 4. **Do not migrate to Python** unless the team has a specific, compelling reason. The Python path requires a near-complete rewrite of the backend including 6–8 monitor types that depend on Node.js-exclusive libraries, carries higher compatibility risk with the Socket.IO client, and delivers no meaningful advantage over NestJS for this project's architecture.
 

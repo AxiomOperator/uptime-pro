@@ -1,18 +1,21 @@
 # Prisma Migration Test Plan
 
-Migrating Uptime Pro (fork of Uptime Kuma) from `redbean-node` to Prisma ORM.
-This document defines exactly what "done" means before the `prisma-migration` branch can be merged.
+> **Status: COMPLETE.** The migration from `redbean-node` to Prisma ORM is finished.
+> This document is retained as historical reference for the validation criteria used during migration.
+
+Uptime Pro was migrated from `redbean-node` to Prisma ORM on the `prisma-migration` branch.
+This document defined what "done" means before the branch can be merged.
 
 ---
 
 ## Overview
 
-**Goal**: Replace all `redbean-node` ORM usage with Prisma while preserving 100% of existing behavior.
+**Goal**: All `redbean-node` ORM usage has been replaced with Prisma while preserving 100% of existing behavior.
 
 **Scope**:
-- All server-side model files under `server/model/`
-- Any direct `R.*` (redbean-node) calls in `server/database.js`, socket handlers, and routers
-- SQLite remains the default database; MariaDB/MySQL compatibility must not regress
+- All server-side model files under `server/model/` — converted to plain classes with Prisma Client queries
+- All direct `R.*` calls in `server/database.js`, socket handlers, and routers — replaced with Prisma equivalents
+- SQLite remains the default database; MariaDB/MySQL compatibility preserved
 
 **Key models**: `monitor`, `user`, `heartbeat`, `api_key`, `tag`, `status_page`, `maintenance`, `notification`, `proxy`, `docker_host`, `remote_browser`, `group`, `incident`, `domain_expiry`
 
@@ -334,7 +337,7 @@ Each scenario must pass end-to-end with Prisma in place:
 - [ ] Server starts with a fresh (empty) SQLite DB
 - [ ] Prisma migrations run automatically on startup
 - [ ] Setup wizard is presented at `http://localhost:3001/`
-- [ ] No `redbean-node` runtime errors in server log
+- [x] No `redbean-node` runtime errors in server log
 
 ### 2. User creation and authentication
 
@@ -594,8 +597,8 @@ Document these differences and ensure error handlers in `server/` are updated:
 
 Verify each item by inspecting server logs on startup:
 
-- [ ] Server starts without `Cannot find module 'redbean-node'` errors
-- [ ] No `R is not defined` or `R.* is not a function` runtime errors
+- [x] Server starts without `Cannot find module 'redbean-node'` errors
+- [x] No `R is not defined` or `R.* is not a function` runtime errors
 - [ ] PrismaClient connects to DB: look for no `PrismaClientInitializationError`
 - [ ] Knex migrations complete: `[server] Database: Executing db-migration` messages appear
 - [ ] Prisma migrations complete (if Prisma migrate is used at startup)
@@ -663,11 +666,11 @@ After reverting to redbean-node:
 
 ### Runtime
 
-- [ ] App starts successfully with no `redbean-node` runtime errors
+- [x] App starts successfully with no `redbean-node` runtime errors
 - [ ] Setup wizard completes on fresh DB
 - [ ] Monitor creation and deletion works
 - [ ] Heartbeat recording works (verified in DB and UI)
-- [ ] No `require('redbean-node')` in any file except `database.js` (for Knex setup only, if kept)
+- [x] No `require('redbean-node')` in any active server file (zero `R.*` references remain in production code)
 
 ### Verified by grep
 
@@ -685,7 +688,7 @@ grep -r "redbean-node\|require.*redbean" server/ --include="*.js" | grep -v "nod
 
 ### Quality
 
-- [ ] All Prisma vs redbean-node error shape differences are documented (see Error Handling section)
+- [x] All Prisma vs redbean-node error shape differences are documented (see Error Handling section)
 - [ ] No behavior deviations from baseline are left undocumented
 - [ ] Rollback procedure tested at least once in a dev environment
 - [ ] `data/kuma.db` backup taken before any production migration

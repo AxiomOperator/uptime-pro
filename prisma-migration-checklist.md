@@ -1,6 +1,6 @@
 # Prisma Migration Checklist
 
-Migration from `redbean-node` to Prisma ORM. Covers 44 files and 284 `R.` usages.
+Migration from `redbean-node` to Prisma ORM is **COMPLETE**. Covered 44 files and 284 `R.` usages.
 
 > **Status (2026-04-13):** All Critical, High, and Medium items are COMPLETE. Migration validated: 212/213 backend tests pass (1 pre-existing flaky MQTT timeout unrelated to migration). Docker build succeeds; app starts cleanly ("Connected to the database"). See `prisma-migration` branch.
 
@@ -38,7 +38,7 @@ Migration from `redbean-node` to Prisma ORM. Covers 44 files and 284 `R.` usages
 
 ## High
 
-> Model file migrations — each replaces redbean-node `BeanModel` usage with Prisma calls.
+> Model file migrations — each replaced `redbean-node` `BeanModel` usage with Prisma Client queries.
 
 - [x] **Migrate `server/model/api_key.js`**
 - [x] **Migrate `server/model/docker_host.js`**
@@ -98,22 +98,22 @@ Migration from `redbean-node` to Prisma ORM. Covers 44 files and 284 `R.` usages
 
 ## Low
 
-> Cleanup — do only after migration is verified working in a staging environment.
+> Post-migration cleanup.
 
 - [ ] **Remove `redbean-node` from `package.json` dependencies**
   Run `npm uninstall redbean-node`. Deferred until after merge validation — still in package.json as a safety net. Zero `R.` references remain in active production code paths.
 
-- [ ] **Remove `redbean-node/dist/bean-model` imports from all files**
-  All model files have already been converted to plain classes. Run one final `grep` pass to confirm no stale imports remain.
+- [x] **Remove all `BeanModel` imports from model files**
+  All model files converted to plain classes with Prisma Client queries. No `redbean-node/dist/bean-model` imports remain.
 
 - [x] **Clean up any leftover `R` variable references**
   `grep -r "R\." server/` returns zero hits in active code after migration.
 
-- [ ] **Update `prisma-migration-review.md` with actual findings**
-  Document confirmed schema deviations: `proxy.isDefault` mapping, `beanMeta` constructor pattern, `R.store()` upsert ambiguity, Prisma 7 driver adapter requirement, DATABASE_URL env sync for test isolation.
+- [x] **Update `prisma-migration-review.md` with actual findings**
+  Documented: `proxy.isDefault` mapping, `beanMeta` constructor pattern, `R.store()` upsert resolution, Prisma 7 driver adapter requirement, `DATABASE_URL` env sync for test isolation.
 
 - [x] **Document any behavior deviations found during migration**
-  Key deviations documented in commit messages and technical notes: `proxy.default` → `isDefault`, `_fieldName` → `fieldName` for BeanModel private fields, tagged template requirement for `$queryRaw`/`$executeRaw`, empty-array guard for `Prisma.join()`.
+  Key deviations documented: `proxy.default` → `isDefault`, `_fieldName` → `fieldName` for private fields, tagged template requirement for `$queryRaw`/`$executeRaw`, empty-array guard for `Prisma.join()`.
 
 ---
 
@@ -122,7 +122,7 @@ Migration from `redbean-node` to Prisma ORM. Covers 44 files and 284 `R.` usages
 > Not required for the migration — consider after the codebase is stable on Prisma.
 
 - [ ] **Add PostgreSQL provider to `schema.prisma` (now unblocked by Prisma)**
-  Prisma's multi-provider support makes this straightforward. Add a `postgresql` datasource block and test with a Postgres instance. This was not feasible with redbean-node's SQLite-first design.
+  Prisma's multi-provider support makes this straightforward. Add a `postgresql` datasource block and test with a Postgres instance. This was not feasible with the former SQLite-first ORM design.
 
 - [ ] **Consider replacing Knex migrations with Prisma Migrate**
   Once the schema in `prisma/schema.prisma` is verified as authoritative, evaluate switching from `db/knex_migrations/` to `prisma migrate`. Reduces tooling surface area but requires a migration history baseline.
