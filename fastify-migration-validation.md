@@ -512,3 +512,57 @@ All of the following must be true before the `fastify-migration` branch is merge
 
 - [ ] `README.md` updated to mention Fastify as the HTTP framework
 - [ ] `fastify-migration.md` and planning documents archived or removed from repo root
+
+---
+
+## Validation Evidence — Phase 4 Complete
+
+**Date:** 2025-04-14  
+**Branch:** `fastify-migration`  
+**Node.js:** 22.20.0
+
+### Test Results
+- `npm run test-backend`: **213/213 passing**, 0 failures, 39 suites, ~56s
+
+### Security Headers (`curl -I http://localhost:3001/`)
+| Header | Value |
+|--------|-------|
+| `X-Frame-Options` | `SAMEORIGIN` |
+| `X-Content-Type-Options` | `nosniff` |
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` |
+| `X-DNS-Prefetch-Control` | `off` |
+| `X-Download-Options` | `noopen` |
+| `X-Permitted-Cross-Domain-Policies` | `none` |
+| `Cross-Origin-Opener-Policy` | `same-origin` |
+| `Cross-Origin-Resource-Policy` | `same-origin` |
+| `X-XSS-Protection` | `0` |
+
+Provided by `@fastify/helmet` (CSP and COEP disabled for Vue SPA/iframe compatibility).
+
+### Rate Limiting
+- Scoped to all `/api/v1/` routes in `server/routes/api/v1/index.js`
+- Limit: 60 requests/minute per IP
+- **429 confirmed at request 61**
+- Body: `{"ok":false,"msg":"Rate limit exceeded. Try again in 60 seconds.","retryAfter":60}`
+- Headers: `x-ratelimit-limit: 60`, `x-ratelimit-remaining: N`, `x-ratelimit-reset: N`
+
+### OpenAPI / Swagger
+- `/docs` returns Swagger UI; **17 v1 paths** in `/docs/json`
+
+### Auth
+- Without Bearer token: **HTTP 401** `{"ok":false,"msg":"Unauthorized: missing Bearer token"}`
+- With valid token: **HTTP 200** with data
+
+### Graceful Shutdown
+- `server.httpServer = app.server` (Fastify's underlying `http.Server`) — confirmed correct
+
+### Express Cleanup
+- No active `require("express")` in server code
+- `express` and `express-static-gzip` absent from `node_modules`
+- `express-basic-auth` retained in `server/auth.js` for Prometheus Basic Auth guard (deferred)
+- `apicache` module retained — active cache invalidation in socket handlers/models (deferred)
+
+### Files Changed in Phase 4
+- `server/server.js` — added `@fastify/helmet` after `@fastify/cors`
+- `server/routes/api/v1/index.js` — added `@fastify/rate-limit` with scoped `setErrorHandler`
+- `package.json` / `package-lock.json` — added `@fastify/rate-limit@10.3.0`, `@fastify/helmet`

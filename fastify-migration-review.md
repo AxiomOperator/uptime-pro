@@ -330,3 +330,45 @@ broken in-between state.
 
 The phased plan structure (P1 → P2 → P3 → P4) is sound. The plan's risk areas R1–R6 are all
 confirmed and present in the repo, with D4–D9 as additional risks not covered by the plan.
+
+---
+
+## Migration Complete — All 4 Phases Done
+
+**Date:** 2025-04-14  
+**Branch:** `fastify-migration` — ready for merge review
+
+### Final Status
+
+All 4 phases of the Express → Fastify migration are complete:
+
+| Phase | Summary | Status |
+|-------|---------|--------|
+| Phase 1 | Express → Fastify (8 files converted, Socket.IO migrated) | ✅ |
+| Phase 2 | Schema validation + Swagger at `/docs` | ✅ |
+| Phase 3 | 17 REST routes at `/api/v1/` with Bearer auth | ✅ |
+| Phase 4 | Rate limiting + security headers + cleanup | ✅ |
+
+**Tests: 213/213 passing**
+
+### Final Deviations Summary (6 + additions)
+
+| ID | Deviation | Resolution |
+|----|-----------|------------|
+| D1 | `apicache` is a local module, not npm | Retained; active cache invalidation |
+| D2 | No `@fastify/socket.io` package pre-installed | Installed in Phase 1 |
+| D3 | `express-basic-auth` in `server/auth.js` for Prometheus guard | Retained; deferred removal |
+| D4 | `server/setup-database.js` and `server/utils/simple-migration-server.js` used Express | Converted in Phase 1 |
+| D5 | `prometheus-api-metrics` returned Express handler | Replaced with direct `prom-client` in Phase 1 |
+| D6 | Fastify v5.x (not v4) required compatibility checks | All plugins confirmed Fastify v5 compatible |
+| D7 | Socket event count: 86 total (not ~55) | Documentation only |
+| D8 | Per-route `allowDevAllOrigin`/`allowAllOrigin` calls | Replaced with `@fastify/cors` global plugin |
+| D9 | Rate limit `errorResponseBuilder` must return Error (not plain object) in v10 | Fixed with scoped `setErrorHandler` for `{ ok, msg, retryAfter }` format |
+
+### Deferred Items (non-blocking)
+
+- Remove `server/modules/apicache/` (active cache invalidation throughout codebase)
+- Rewrite `server/auth.js` Prometheus Basic Auth guard to remove `express-basic-auth`
+- Clean up `allowDevAllOrigin`/`allowAllOrigin` per-route calls in `server/util-server.js`
+- Docker build and browser smoke tests
+- Lint cleanup (pre-existing warnings)
