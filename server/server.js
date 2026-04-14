@@ -5,6 +5,12 @@
  */
 console.log("Welcome to Uptime Pro");
 
+// Prisma $queryRaw returns BigInt for integer columns in SQLite.
+// JSON.stringify cannot serialize BigInt by default, which crashes Socket.IO emit.
+BigInt.prototype.toJSON = function () {
+    return Number(this);
+};
+
 // As the log function need to use dayjs, it should be very top
 const dayjs = require("dayjs");
 dayjs.extend(require("dayjs/plugin/utc"));

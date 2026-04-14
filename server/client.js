@@ -57,12 +57,11 @@ async function sendNotificationList(socket) {
  */
 async function sendHeartbeatList(socket, monitorID, toUser = false, overwrite = false) {
     const prisma = getPrisma();
-    let list = await prisma.$queryRaw`
-        SELECT * FROM heartbeat
-        WHERE monitor_id = ${monitorID}
-        ORDER BY time DESC
-        LIMIT 100
-    `;
+    let list = await prisma.heartbeat.findMany({
+        where: { monitorId: parseInt(monitorID) },
+        orderBy: { time: "desc" },
+        take: 100,
+    });
 
     let result = list.reverse();
 
