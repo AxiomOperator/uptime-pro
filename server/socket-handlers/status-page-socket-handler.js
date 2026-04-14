@@ -417,7 +417,7 @@ module.exports.statusPageSocketHandler = (socket) => {
             });
             Object.assign(statusPage, updatedRow);
 
-            await statusPage.updateDomainNameList(config.domainNameList);
+            await statusPage.updateDomainNameList(config.domainNameList || []);
             await StatusPage.loadDomainMappingList();
 
             // Save Public Group List
