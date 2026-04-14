@@ -398,6 +398,9 @@ let needSetup = false;
     const statusPageRouter = require("./routers/status-page-router");
     await app.register(statusPageRouter);
 
+    // REST API v1 routes (Bearer token protected)
+    await app.register(require("./routes/api/v1"), { prefix: "/api/v1" });
+
     // Universal Route Handler, must be at the end of all routes.
     app.setNotFoundHandler(async (request, reply) => {
         if (request.url.startsWith("/upload/")) {
