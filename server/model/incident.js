@@ -10,13 +10,13 @@ class Incident {
         const prisma = getPrisma();
         this.active = false;
         this.pin = false;
-        this.last_updated_date = dayjs.utc().toDate();
+        this.lastUpdatedDate = dayjs.utc().toDate();
         await prisma.incident.update({
             where: { id: this.id },
             data: {
                 active: false,
                 pin: false,
-                last_updated_date: this.last_updated_date,
+                lastUpdatedDate: this.lastUpdatedDate,
             }
         });
     }
@@ -33,9 +33,9 @@ class Incident {
             content: this.content,
             pin: !!this.pin,
             active: !!this.active,
-            createdDate: this.created_date,
-            lastUpdatedDate: this.last_updated_date,
-            status_page_id: this.status_page_id,
+            createdDate: this.createdDate,
+            lastUpdatedDate: this.lastUpdatedDate,
+            statusPageId: this.statusPageId,
         };
     }
 }

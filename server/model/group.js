@@ -10,11 +10,11 @@ class Group {
      * @returns {Promise<object>} Object ready to parse
      */
     async toPublicJSON(showTags = false, certExpiry = false) {
-        let monitorBeanList = await this.getMonitorList();
+        let monitorRecords = await this.getMonitorList();
         let monitorList = [];
 
-        for (let bean of monitorBeanList) {
-            monitorList.push(await bean.toPublicJSON(showTags, certExpiry));
+        for (let record of monitorRecords) {
+            monitorList.push(await record.toPublicJSON(showTags, certExpiry));
         }
 
         return {

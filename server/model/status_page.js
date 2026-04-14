@@ -86,8 +86,8 @@ class StatusPage {
 
         // Use custom RSS title if set, otherwise fall back to status page title
         let feedTitle = "Uptime Pro RSS Feed";
-        if (statusPage.rss_title) {
-            feedTitle = statusPage.rss_title;
+        if (statusPage.rssTitle) {
+            feedTitle = statusPage.rssTitle;
         } else if (statusPage.title) {
             feedTitle = `${statusPage.title} RSS Feed`;
         }
@@ -273,7 +273,7 @@ class StatusPage {
         const config = await statusPage.toPublicJSON();
 
         // Public Group List
-        const showTags = !!statusPage.show_tags;
+        const showTags = !!statusPage.showTags;
 
         const prismaRSS = getPrisma();
         const groupRowsRSS = await prismaRSS.$queryRaw`SELECT * FROM \`group\` WHERE public = 1 AND status_page_id = ${statusPage.id} ORDER BY weight`;
@@ -281,8 +281,8 @@ class StatusPage {
 
         let heartbeats = [];
 
-        for (let groupBean of list) {
-            let monitorGroup = await groupBean.toPublicJSON(showTags, config?.showCertificateExpiry);
+        for (let group of list) {
+            let monitorGroup = await group.toPublicJSON(showTags, config?.showCertificateExpiry);
             for (const monitor of monitorGroup.monitorList) {
                 const hbRows = await prismaRSS.$queryRaw`SELECT * FROM heartbeat WHERE monitor_id = ${monitor.id} ORDER BY time DESC LIMIT 1`;
                 const heartbeat = hbRows[0] ?? null;
@@ -325,13 +325,13 @@ class StatusPage {
 
         // Public Group List
         const publicGroupList = [];
-        const showTags = !!statusPage.show_tags;
+        const showTags = !!statusPage.showTags;
 
         const groupRowsPageData = await prismaPageData.$queryRaw`SELECT * FROM \`group\` WHERE public = 1 AND status_page_id = ${statusPage.id} ORDER BY weight`;
         const list = groupRowsPageData.map(row => Object.assign(new Group(), row));
 
-        for (let groupBean of list) {
-            let monitorGroup = await groupBean.toPublicJSON(showTags, config?.showCertificateExpiry);
+        for (let group of list) {
+            let monitorGroup = await group.toPublicJSON(showTags, config?.showCertificateExpiry);
             publicGroupList.push(monitorGroup);
         }
 
@@ -366,7 +366,7 @@ class StatusPage {
      * Send status page list to client
      * @param {Server} io io Socket server instance
      * @param {Socket} socket Socket.io instance
-     * @returns {Promise<Bean[]>} Status page list
+     * @returns {Promise<StatusPage[]>} Status page list
      */
     static async sendStatusPageList(io, socket) {
         let result = {};
@@ -412,7 +412,7 @@ class StatusPage {
 
                 await tx.statusPageCname.create({
                     data: {
-                        status_page_id: this.id,
+                        statusPageId: this.id,
                         domain,
                     },
                 });
@@ -448,17 +448,17 @@ class StatusPage {
             description: this.description,
             icon: this.getIcon(),
             theme: this.theme,
-            autoRefreshInterval: this.auto_refresh_interval,
+            autoRefreshInterval: this.autoRefreshInterval,
             published: !!this.published,
-            customCSS: this.custom_css,
-            footerText: this.footer_text,
-            showPoweredBy: !!this.show_powered_by,
-            analyticsId: this.analytics_id,
-            analyticsScriptUrl: this.analytics_script_url,
-            analyticsType: this.analytics_type,
-            showCertificateExpiry: !!this.show_certificate_expiry,
-            showOnlyLastHeartbeat: !!this.show_only_last_heartbeat,
-            rssTitle: this.rss_title,
+            customCSS: this.customCss,
+            footerText: this.footerText,
+            showPoweredBy: !!this.showPoweredBy,
+            analyticsId: this.analyticsId,
+            analyticsScriptUrl: this.analyticsScriptUrl,
+            analyticsType: this.analyticsType,
+            showCertificateExpiry: !!this.showCertificateExpiry,
+            showOnlyLastHeartbeat: !!this.showOnlyLastHeartbeat,
+            rssTitle: this.rssTitle,
         };
     }
 
@@ -473,19 +473,19 @@ class StatusPage {
             title: this.title,
             description: this.description,
             icon: this.getIcon(),
-            autoRefreshInterval: this.auto_refresh_interval,
+            autoRefreshInterval: this.autoRefreshInterval,
             theme: this.theme,
             published: !!this.published,
-            showTags: !!this.show_tags,
-            customCSS: this.custom_css,
-            footerText: this.footer_text,
-            showPoweredBy: !!this.show_powered_by,
-            analyticsId: this.analytics_id,
-            analyticsScriptUrl: this.analytics_script_url,
-            analyticsType: this.analytics_type,
-            showCertificateExpiry: !!this.show_certificate_expiry,
-            showOnlyLastHeartbeat: !!this.show_only_last_heartbeat,
-            rssTitle: this.rss_title,
+            showTags: !!this.showTags,
+            customCSS: this.customCss,
+            footerText: this.footerText,
+            showPoweredBy: !!this.showPoweredBy,
+            analyticsId: this.analyticsId,
+            analyticsScriptUrl: this.analyticsScriptUrl,
+            analyticsType: this.analyticsType,
+            showCertificateExpiry: !!this.showCertificateExpiry,
+            showOnlyLastHeartbeat: !!this.showOnlyLastHeartbeat,
+            rssTitle: this.rssTitle,
         };
     }
 
@@ -525,21 +525,21 @@ class StatusPage {
 
         if (cursor) {
             incidentRowsHistory = await prismaHistory.incident.findMany({
-                where: { status_page_id: statusPageId, created_date: { lt: new Date(cursor) } },
-                orderBy: { created_date: "desc" },
+                where: { statusPageId: statusPageId, createdDate: { lt: new Date(cursor) } },
+                orderBy: { createdDate: "desc" },
                 take: INCIDENT_PAGE_SIZE,
             });
         } else {
             incidentRowsHistory = await prismaHistory.incident.findMany({
-                where: { status_page_id: statusPageId },
-                orderBy: { created_date: "desc" },
+                where: { statusPageId: statusPageId },
+                orderBy: { createdDate: "desc" },
                 take: INCIDENT_PAGE_SIZE,
             });
         }
 
         const incidents = incidentRowsHistory.map(row => Object.assign(new Incident(), row));
 
-        const total = await prismaHistory.incident.count({ where: { status_page_id: statusPageId } });
+        const total = await prismaHistory.incident.count({ where: { statusPageId: statusPageId } });
 
         const lastIncident = incidents[incidents.length - 1];
         let nextCursor = null;
@@ -547,11 +547,11 @@ class StatusPage {
 
         if (lastIncident) {
             const moreCount = await prismaHistory.incident.count({
-                where: { status_page_id: statusPageId, created_date: { lt: lastIncident.created_date } },
+                where: { statusPageId: statusPageId, createdDate: { lt: lastIncident.createdDate } },
             });
             hasMore = moreCount > 0;
             if (hasMore) {
-                nextCursor = lastIncident.created_date;
+                nextCursor = lastIncident.createdDate;
             }
         }
 

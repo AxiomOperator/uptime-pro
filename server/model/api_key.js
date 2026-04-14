@@ -25,8 +25,8 @@ class APIKey {
             id: this.id,
             key: this.key,
             name: this.name,
-            userID: this.user_id,
-            createdDate: this.created_date,
+            userID: this.userId,
+            createdDate: this.createdDate,
             active: this.active,
             expires: this.expires,
             status: this.getStatus(),
@@ -42,8 +42,8 @@ class APIKey {
         return {
             id: this.id,
             name: this.name,
-            userID: this.user_id,
-            createdDate: this.created_date,
+            userID: this.userId,
+            createdDate: this.createdDate,
             active: this.active,
             expires: this.expires,
             status: this.getStatus(),
@@ -54,7 +54,7 @@ class APIKey {
      * Create a new API Key and store it in the database
      * @param {object} key Object sent by client
      * @param {int} userID ID of socket user
-     * @returns {Promise<bean>} API key
+     * @returns {Promise<APIKey>} API key
      */
     static async save(key, userID) {
         const prisma = getPrisma();
@@ -62,7 +62,7 @@ class APIKey {
             data: {
                 key: key.key,
                 name: key.name,
-                user_id: userID,
+                userId: userID,
                 active: key.active,
                 expires: key.expires ? new Date(key.expires) : null,
             },
