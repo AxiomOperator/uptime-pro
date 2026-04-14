@@ -56,7 +56,7 @@ class DingDing extends NotificationProvider {
 
     /**
      * Send message to DingDing
-     * @param {BeanModel} notification Notification to send
+     * @param {object} notification Notification to send
      * @param {object} params Parameters of message
      * @returns {Promise<boolean>} True if successful else false
      */

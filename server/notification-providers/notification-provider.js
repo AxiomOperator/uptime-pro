@@ -13,7 +13,7 @@ class NotificationProvider {
 
     /**
      * Send a notification
-     * @param {BeanModel} notification Notification to send
+     * @param {object} notification Notification to send
      * @param {string} msg General Message
      * @param {?object} monitorJSON Monitor details (For Up/Down only)
      * @param {?object} heartbeatJSON Heartbeat details (For Up/Down only)

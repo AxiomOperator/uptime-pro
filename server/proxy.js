@@ -15,19 +15,19 @@ class Proxy {
      * @param {object} proxy Proxy to store
      * @param {number} proxyID ID of proxy to update
      * @param {number} userID ID of user the proxy belongs to
-     * @returns {Promise<Bean>} Updated proxy
+     * @returns {Promise<object>} Updated proxy
      */
     static async save(proxy, proxyID, userID) {
         const prisma = getPrisma();
-        let beanId = null;
+        let recordId = null;
 
         if (proxyID) {
-            const existing = await prisma.proxy.findFirst({ where: { id: proxyID, user_id: userID } });
+            const existing = await prisma.proxy.findFirst({ where: { id: proxyID, userId: userID } });
 
             if (!existing) {
                 throw new Error("proxy not found");
             }
-            beanId = proxyID;
+            recordId = proxyID;
         }
 
         // Make sure given proxy protocol is supported
@@ -43,7 +43,7 @@ class Proxy {
         }
 
         const data = {
-            user_id: userID,
+            userId: userID,
             protocol: proxy.protocol,
             host: proxy.host,
             port: proxy.port,
@@ -54,18 +54,18 @@ class Proxy {
             isDefault: proxy.default || false,
         };
 
-        let bean;
-        if (beanId) {
-            bean = await prisma.proxy.update({ where: { id: beanId }, data });
+        let record;
+        if (recordId) {
+            record = await prisma.proxy.update({ where: { id: recordId }, data });
         } else {
-            bean = await prisma.proxy.create({ data });
+            record = await prisma.proxy.create({ data });
         }
 
         if (proxy.applyExisting) {
-            await applyProxyEveryMonitor(bean.id, userID);
+            await applyProxyEveryMonitor(record.id, userID);
         }
 
-        return bean;
+        return record;
     }
 
     /**
@@ -76,9 +76,9 @@ class Proxy {
      */
     static async delete(proxyID, userID) {
         const prisma = getPrisma();
-        const bean = await prisma.proxy.findFirst({ where: { id: proxyID, user_id: userID } });
+        const record = await prisma.proxy.findFirst({ where: { id: proxyID, userId: userID } });
 
-        if (!bean) {
+        if (!record) {
             throw new Error("proxy not found");
         }
 
@@ -86,12 +86,12 @@ class Proxy {
         await prisma.$executeRaw`UPDATE monitor SET proxy_id = null WHERE proxy_id = ${proxyID}`;
 
         // Delete proxy from list
-        await prisma.proxy.delete({ where: { id: bean.id } });
+        await prisma.proxy.delete({ where: { id: record.id } });
     }
 
     /**
-     * Create HTTP and HTTPS agents related with given proxy bean object
-     * @param {object} proxy proxy bean object
+     * Create HTTP and HTTPS agents related with given proxy object
+     * @param {object} proxy proxy object
      * @param {object} options http and https agent options
      * @returns {{httpAgent: Agent, httpsAgent: Agent}} New HTTP and HTTPS agents
      * @throws Proxy protocol is unsupported

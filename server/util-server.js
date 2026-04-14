@@ -397,7 +397,7 @@ exports.setSetting = async function (key, value, type = null) {
 /**
  * Get settings based on type
  * @param {string} type The type of setting
- * @returns {Promise<Bean>} Settings of requested type
+ * @returns {Promise<object>} Settings of requested type
  */
 exports.getSettings = async function (type) {
     return await Settings.getSettings(type);
@@ -642,7 +642,7 @@ exports.checkLogin = (socket) => {
  * For logged-in users, double-check the password
  * @param {Socket} socket Socket.io instance
  * @param {string} currentPassword Password to validate
- * @returns {Promise<Bean>} User
+ * @returns {Promise<object>} User
  * @throws The current password is not a string
  * @throws The provided password is not correct
  */

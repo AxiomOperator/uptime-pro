@@ -135,7 +135,7 @@ class Settings {
     /**
      * Get settings based on type
      * @param {string} type The type of setting
-     * @returns {Promise<Bean>} Settings
+     * @returns {Promise<object>} Settings
      */
     static async getSettings(type) {
         const prisma = getPrisma();
@@ -167,9 +167,9 @@ class Settings {
         let promiseList = [];
 
         for (let key of keyList) {
-            let bean = await prisma.setting.findFirst({ where: { key } });
+            let record = await prisma.setting.findFirst({ where: { key } });
 
-            if (bean == null || bean.type === type) {
+            if (record == null || record.type === type) {
                 promiseList.push(
                     prisma.setting.upsert({
                         where: { key },

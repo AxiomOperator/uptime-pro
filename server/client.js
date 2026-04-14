@@ -18,14 +18,14 @@ const RemoteBrowser = require("./model/remote_browser");
 /**
  * Send list of notification providers to client
  * @param {Socket} socket Socket.io socket instance
- * @returns {Promise<Bean[]>} List of notifications
+ * @returns {Promise<object[]>} List of notifications
  */
 async function sendNotificationList(socket) {
     const timeLogger = new TimeLogger();
 
     let result = [];
     const prisma = getPrisma();
-    let list = await prisma.notification.findMany({ where: { user_id: socket.userID } });
+    let list = await prisma.notification.findMany({ where: { userId: socket.userID } });
 
     for (let row of list) {
         let notificationObject = {};
@@ -86,7 +86,7 @@ async function sendImportantHeartbeatList(socket, monitorID, toUser = false, ove
     const prisma = getPrisma();
 
     let rows = await prisma.heartbeat.findMany({
-        where: { monitor_id: monitorID, important: true },
+        where: { monitorId: monitorID, important: true },
         orderBy: { time: "desc" },
         take: 500,
     });
@@ -105,13 +105,13 @@ async function sendImportantHeartbeatList(socket, monitorID, toUser = false, ove
 /**
  * Emit proxy list to client
  * @param {Socket} socket Socket.io socket instance
- * @returns {Promise<Bean[]>} List of proxies
+ * @returns {Promise<object[]>} List of proxies
  */
 async function sendProxyList(socket) {
     const timeLogger = new TimeLogger();
     const prisma = getPrisma();
 
-    const rows = await prisma.proxy.findMany({ where: { user_id: socket.userID } });
+    const rows = await prisma.proxy.findMany({ where: { userId: socket.userID } });
     io.to(socket.userID).emit(
         "proxyList",
         rows.map((row) => Object.assign(new Proxy(), row).toJSON())
@@ -132,7 +132,7 @@ async function sendAPIKeyList(socket) {
 
     let result = [];
     const prisma = getPrisma();
-    const list = await prisma.apiKey.findMany({ where: { user_id: socket.userID } });
+    const list = await prisma.apiKey.findMany({ where: { userId: socket.userID } });
 
     for (let row of list) {
         result.push(Object.assign(new APIKey(), row).toPublicJSON());
@@ -173,14 +173,14 @@ async function sendInfo(socket, hideVersion = false) {
 /**
  * Send list of docker hosts to client
  * @param {Socket} socket Socket.io socket instance
- * @returns {Promise<Bean[]>} List of docker hosts
+ * @returns {Promise<object[]>} List of docker hosts
  */
 async function sendDockerHostList(socket) {
     const timeLogger = new TimeLogger();
     const prisma = getPrisma();
 
     let result = [];
-    let list = await prisma.dockerHost.findMany({ where: { user_id: socket.userID } });
+    let list = await prisma.dockerHost.findMany({ where: { userId: socket.userID } });
 
     for (let row of list) {
         result.push(Object.assign(new DockerHost(), row).toJSON());
@@ -196,14 +196,14 @@ async function sendDockerHostList(socket) {
 /**
  * Send list of docker hosts to client
  * @param {Socket} socket Socket.io socket instance
- * @returns {Promise<Bean[]>} List of docker hosts
+ * @returns {Promise<object[]>} List of docker hosts
  */
 async function sendRemoteBrowserList(socket) {
     const timeLogger = new TimeLogger();
     const prisma = getPrisma();
 
     let result = [];
-    let list = await prisma.remoteBrowser.findMany({ where: { user_id: socket.userID } });
+    let list = await prisma.remoteBrowser.findMany({ where: { userId: socket.userID } });
 
     for (let row of list) {
         result.push(Object.assign(new RemoteBrowser(), row).toJSON());

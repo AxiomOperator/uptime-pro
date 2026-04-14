@@ -216,7 +216,7 @@ class Notification {
 
     /**
      * Send a notification
-     * @param {BeanModel} notification Notification to send
+     * @param {object} notification Notification to send
      * @param {string} msg General Message
      * @param {object} monitorJSON Monitor details (For Up/Down only)
      * @param {object} heartbeatJSON Heartbeat details (For Up/Down only)
@@ -236,11 +236,11 @@ class Notification {
      * @param {object} notification Notification to save
      * @param {?number} notificationID ID of notification to update
      * @param {number} userID ID of user who adds notification
-     * @returns {Promise<Bean>} Notification that was saved
+     * @returns {Promise<object>} Notification that was saved
      */
     static async save(notification, notificationID, userID) {
         const prisma = getPrisma();
-        let bean;
+        let record;
 
         // applyExisting is one time only, don't save it to database.
         const applyExisting = notification.applyExisting || false;
@@ -248,33 +248,33 @@ class Notification {
 
         const data = {
             name: notification.name,
-            user_id: userID,
+            userId: userID,
             config: JSON.stringify(notification),
-            is_default: !!notification.isDefault,
+            isDefault: !!notification.isDefault,
         };
 
         if (notificationID) {
-            bean = await prisma.notification.findFirst({ where: { id: notificationID, user_id: userID } });
+            record = await prisma.notification.findFirst({ where: { id: notificationID, userId: userID } });
 
-            if (!bean) {
+            if (!record) {
                 throw new Error("notification not found");
             }
 
-            bean = await prisma.notification.update({
+            record = await prisma.notification.update({
                 where: { id: notificationID },
                 data,
             });
         } else {
-            bean = await prisma.notification.create({
+            record = await prisma.notification.create({
                 data: { ...data, active: true },
             });
         }
 
         if (applyExisting) {
-            await applyNotificationEveryMonitor(bean.id, userID);
+            await applyNotificationEveryMonitor(record.id, userID);
         }
 
-        return bean;
+        return record;
     }
 
     /**
@@ -285,13 +285,13 @@ class Notification {
      */
     static async delete(notificationID, userID) {
         const prisma = getPrisma();
-        let bean = await prisma.notification.findFirst({ where: { id: notificationID, user_id: userID } });
+        let record = await prisma.notification.findFirst({ where: { id: notificationID, userId: userID } });
 
-        if (!bean) {
+        if (!record) {
             throw new Error("notification not found");
         }
 
-        await prisma.notification.delete({ where: { id: bean.id } });
+        await prisma.notification.delete({ where: { id: record.id } });
     }
 
     /**
@@ -315,12 +315,12 @@ async function applyNotificationEveryMonitor(notificationID, userID) {
 
     for (let i = 0; i < monitors.length; i++) {
         let checkNotification = await prisma.monitorNotification.findFirst({
-            where: { monitor_id: monitors[i].id, notification_id: notificationID },
+            where: { monitorId: monitors[i].id, notificationId: notificationID },
         });
 
         if (!checkNotification) {
             await prisma.monitorNotification.create({
-                data: { monitor_id: monitors[i].id, notification_id: notificationID },
+                data: { monitorId: monitors[i].id, notificationId: notificationID },
             });
         }
     }

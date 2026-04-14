@@ -10,7 +10,7 @@ const dayjs = require("dayjs");
  * Login to web app
  * @param {string} username Username to login with
  * @param {string} password Password to login with
- * @returns {Promise<(Bean|null)>} User or null if login failed
+ * @returns {Promise<(object|null)>} User or null if login failed
  */
 exports.login = async function (username, password) {
     if (typeof username !== "string" || typeof password !== "string") {

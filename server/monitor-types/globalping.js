@@ -453,13 +453,13 @@ class GlobalpingMonitorType extends MonitorType {
         }
 
         const prisma = getPrisma();
-        let tlsInfoBean = await prisma.monitorTlsInfo.findFirst({ where: { monitor_id: monitor.id } });
+        let tlsInfoRecord = await prisma.monitorTlsInfo.findFirst({ where: { monitorId: monitor.id } });
 
-        if (tlsInfoBean == null) {
-            tlsInfoBean = { monitor_id: monitor.id };
+        if (tlsInfoRecord == null) {
+            tlsInfoRecord = { monitorId: monitor.id };
         } else {
             try {
-                let oldCertInfo = JSON.parse(tlsInfoBean.info_json);
+                let oldCertInfo = JSON.parse(tlsInfoRecord.infoJson);
 
                 if (
                     oldCertInfo &&
@@ -486,11 +486,11 @@ class GlobalpingMonitorType extends MonitorType {
             },
         };
 
-        tlsInfoBean.info_json = JSON.stringify(certResult);
-        if (tlsInfoBean.id) {
-            await prisma.monitorTlsInfo.update({ where: { id: tlsInfoBean.id }, data: { info_json: tlsInfoBean.info_json } });
+        tlsInfoRecord.infoJson = JSON.stringify(certResult);
+        if (tlsInfoRecord.id) {
+            await prisma.monitorTlsInfo.update({ where: { id: tlsInfoRecord.id }, data: { infoJson: tlsInfoRecord.infoJson } });
         } else {
-            await prisma.monitorTlsInfo.create({ data: { monitor_id: tlsInfoBean.monitor_id, info_json: tlsInfoBean.info_json } });
+            await prisma.monitorTlsInfo.create({ data: { monitorId: tlsInfoRecord.monitorId, infoJson: tlsInfoRecord.infoJson } });
         }
 
         if (monitor.prometheus) {

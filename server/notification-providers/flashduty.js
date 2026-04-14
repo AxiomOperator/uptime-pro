@@ -60,7 +60,7 @@ class FlashDuty extends NotificationProvider {
 
     /**
      * Send the message
-     * @param {BeanModel} notification Message title
+     * @param {object} notification Message title
      * @param {string} title Message
      * @param {string} body Message
      * @param {object} monitorInfo Monitor details

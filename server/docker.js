@@ -16,40 +16,40 @@ class DockerHost {
      * @param {object} dockerHost Docker host to save
      * @param {?number} dockerHostID ID of the docker host to update
      * @param {number} userID ID of the user who adds the docker host
-     * @returns {Promise<Bean>} Updated docker host
+     * @returns {Promise<object>} Updated docker host
      */
     static async save(dockerHost, dockerHostID, userID) {
         const prisma = getPrisma();
-        let bean;
+        let record;
 
         if (dockerHostID) {
-            bean = await prisma.dockerHost.findFirst({ where: { id: dockerHostID, user_id: userID } });
+            record = await prisma.dockerHost.findFirst({ where: { id: dockerHostID, userId: userID } });
 
-            if (!bean) {
+            if (!record) {
                 throw new Error("docker host not found");
             }
 
-            bean = await prisma.dockerHost.update({
+            record = await prisma.dockerHost.update({
                 where: { id: dockerHostID },
                 data: {
-                    user_id: userID,
-                    docker_daemon: dockerHost.dockerDaemon,
-                    docker_type: dockerHost.dockerType,
+                    userId: userID,
+                    dockerDaemon: dockerHost.dockerDaemon,
+                    dockerType: dockerHost.dockerType,
                     name: dockerHost.name,
                 },
             });
         } else {
-            bean = await prisma.dockerHost.create({
+            record = await prisma.dockerHost.create({
                 data: {
-                    user_id: userID,
-                    docker_daemon: dockerHost.dockerDaemon,
-                    docker_type: dockerHost.dockerType,
+                    userId: userID,
+                    dockerDaemon: dockerHost.dockerDaemon,
+                    dockerType: dockerHost.dockerType,
                     name: dockerHost.name,
                 },
             });
         }
 
-        return bean;
+        return record;
     }
 
     /**
@@ -60,16 +60,16 @@ class DockerHost {
      */
     static async delete(dockerHostID, userID) {
         const prisma = getPrisma();
-        let bean = await prisma.dockerHost.findFirst({ where: { id: dockerHostID, user_id: userID } });
+        let record = await prisma.dockerHost.findFirst({ where: { id: dockerHostID, userId: userID } });
 
-        if (!bean) {
+        if (!record) {
             throw new Error("docker host not found");
         }
 
         // Delete removed proxy from monitors if exists
         await prisma.$executeRaw`UPDATE monitor SET docker_host = null WHERE docker_host = ${dockerHostID}`;
 
-        await prisma.dockerHost.delete({ where: { id: bean.id } });
+        await prisma.dockerHost.delete({ where: { id: record.id } });
     }
 
     /**
