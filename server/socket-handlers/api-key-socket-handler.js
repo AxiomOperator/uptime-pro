@@ -22,14 +22,14 @@ module.exports.apiKeySocketHandler = (socket) => {
             let clearKey = nanoid(40);
             let hashedKey = await passwordHash.generate(clearKey);
             key["key"] = hashedKey;
-            let bean = await APIKey.save(key, socket.userID);
+            let apiKey = await APIKey.save(key, socket.userID);
 
             log.debug("apikeys", "Added API Key");
             log.debug("apikeys", key);
 
             // Append key ID and prefix to start of key separated by _, used to get
             // correct hash when validating key.
-            let formattedKey = "uk" + bean.id + "_" + clearKey;
+            let formattedKey = "uk" + apiKey.id + "_" + clearKey;
             await sendAPIKeyList(socket);
 
             // Enable API auth if the user creates a key, otherwise only basic
@@ -41,7 +41,7 @@ module.exports.apiKeySocketHandler = (socket) => {
                 msg: "successAdded",
                 msgi18n: true,
                 key: formattedKey,
-                keyID: bean.id,
+                keyID: apiKey.id,
             });
         } catch (e) {
             callback({

@@ -20,33 +20,33 @@ module.exports.maintenanceSocketHandler = (socket) => {
             log.debug("maintenance", maintenance);
 
             const prisma = getPrisma();
-            let bean = await Maintenance.jsonToBean(new Maintenance(), maintenance);
-            bean.user_id = socket.userID;
+            let record = await Maintenance.jsonToBean(new Maintenance(), maintenance);
+            record.userId = socket.userID;
 
             const created = await prisma.maintenance.create({
                 data: {
-                    title: bean.title,
-                    description: bean.description,
-                    strategy: bean.strategy,
-                    interval_day: bean.interval_day ?? null,
-                    timezone: bean.timezone ?? null,
-                    active: bean.active !== undefined ? !!bean.active : true,
-                    user_id: bean.user_id,
-                    start_date: bean.start_date ? new Date(bean.start_date) : null,
-                    end_date: bean.end_date ? new Date(bean.end_date) : null,
-                    start_time: bean.start_time ?? null,
-                    end_time: bean.end_time ?? null,
-                    weekdays: bean.weekdays ?? "[]",
-                    days_of_month: bean.days_of_month ?? "[]",
-                    cron: bean.cron ?? null,
-                    duration: bean.duration ?? null,
+                    title: record.title,
+                    description: record.description,
+                    strategy: record.strategy,
+                    intervalDay: record.intervalDay ?? null,
+                    timezone: record.timezone ?? null,
+                    active: record.active !== undefined ? !!record.active : true,
+                    userId: record.userId,
+                    startDate: record.startDate ? new Date(record.startDate) : null,
+                    endDate: record.endDate ? new Date(record.endDate) : null,
+                    startTime: record.startTime ?? null,
+                    endTime: record.endTime ?? null,
+                    weekdays: record.weekdays ?? "[]",
+                    daysOfMonth: record.daysOfMonth ?? "[]",
+                    cron: record.cron ?? null,
+                    duration: record.duration ?? null,
                 },
             });
-            bean.id = created.id;
+            record.id = created.id;
             let maintenanceID = created.id;
 
-            server.maintenanceList[maintenanceID] = bean;
-            await bean.run(true);
+            server.maintenanceList[maintenanceID] = record;
+            await record.run(true);
 
             await server.sendMaintenanceList(socket);
 
@@ -70,40 +70,40 @@ module.exports.maintenanceSocketHandler = (socket) => {
             checkLogin(socket);
 
             const prisma = getPrisma();
-            let bean = server.getMaintenance(maintenance.id);
+            let record = server.getMaintenance(maintenance.id);
 
-            if (bean.user_id !== socket.userID) {
+            if (record.userId !== socket.userID) {
                 throw new Error("Permission denied.");
             }
 
-            await Maintenance.jsonToBean(bean, maintenance);
+            await Maintenance.jsonToBean(record, maintenance);
             await prisma.maintenance.update({
-                where: { id: bean.id },
+                where: { id: record.id },
                 data: {
-                    title: bean.title,
-                    description: bean.description,
-                    strategy: bean.strategy,
-                    interval_day: bean.interval_day ?? null,
-                    timezone: bean.timezone ?? null,
-                    active: bean.active !== undefined ? !!bean.active : true,
-                    start_date: bean.start_date ? new Date(bean.start_date) : null,
-                    end_date: bean.end_date ? new Date(bean.end_date) : null,
-                    start_time: bean.start_time ?? null,
-                    end_time: bean.end_time ?? null,
-                    weekdays: bean.weekdays ?? "[]",
-                    days_of_month: bean.days_of_month ?? "[]",
-                    cron: bean.cron ?? null,
-                    duration: bean.duration ?? null,
+                    title: record.title,
+                    description: record.description,
+                    strategy: record.strategy,
+                    intervalDay: record.intervalDay ?? null,
+                    timezone: record.timezone ?? null,
+                    active: record.active !== undefined ? !!record.active : true,
+                    startDate: record.startDate ? new Date(record.startDate) : null,
+                    endDate: record.endDate ? new Date(record.endDate) : null,
+                    startTime: record.startTime ?? null,
+                    endTime: record.endTime ?? null,
+                    weekdays: record.weekdays ?? "[]",
+                    daysOfMonth: record.daysOfMonth ?? "[]",
+                    cron: record.cron ?? null,
+                    duration: record.duration ?? null,
                 },
             });
-            await bean.run(true);
+            await record.run(true);
             await server.sendMaintenanceList(socket);
 
             callback({
                 ok: true,
                 msg: "Saved.",
                 msgi18n: true,
-                maintenanceID: bean.id,
+                maintenanceID: record.id,
             });
         } catch (e) {
             log.error("maintenance", e);
@@ -125,8 +125,8 @@ module.exports.maintenanceSocketHandler = (socket) => {
             for await (const monitor of monitors) {
                 await prisma.monitorMaintenance.create({
                     data: {
-                        monitor_id: monitor.id,
-                        maintenance_id: maintenanceID,
+                        monitorId: monitor.id,
+                        maintenanceId: maintenanceID,
                     },
                 });
             }
@@ -157,8 +157,8 @@ module.exports.maintenanceSocketHandler = (socket) => {
             for await (const statusPage of statusPages) {
                 await prisma.maintenanceStatusPage.create({
                     data: {
-                        status_page_id: statusPage.id,
-                        maintenance_id: maintenanceID,
+                        statusPageId: statusPage.id,
+                        maintenanceId: maintenanceID,
                     },
                 });
             }
@@ -186,13 +186,13 @@ module.exports.maintenanceSocketHandler = (socket) => {
 
             const prisma = getPrisma();
             let row = await prisma.maintenance.findFirst({
-                where: { id: parseInt(maintenanceID), user_id: socket.userID },
+                where: { id: parseInt(maintenanceID), userId: socket.userID },
             });
-            let bean = Object.assign(new Maintenance(), row);
+            let record = Object.assign(new Maintenance(), row);
 
             callback({
                 ok: true,
-                maintenance: await bean.toJSON(),
+                maintenance: await record.toJSON(),
             });
         } catch (e) {
             callback({
