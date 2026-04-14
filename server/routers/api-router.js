@@ -38,7 +38,9 @@ async function apiRoutes(fastify, options) {
                     type: "object",
                     properties: {
                         type: { type: "string" },
-                        hosturl: { type: "string" }
+                        hosturl: { type: "string" },
+                        entryPage: { type: "string" },
+                        statusPageSlug: { type: "string" }
                     }
                 }
             }

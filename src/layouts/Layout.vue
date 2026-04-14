@@ -128,6 +128,11 @@
         <main>
             <router-view v-if="$root.loggedIn" />
             <Login v-if="!$root.loggedIn && $root.allowLoginDialog" />
+            <div v-if="!$root.loggedIn && !$root.allowLoginDialog" class="d-flex justify-content-center align-items-center" style="height: 60vh;">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">{{ $t("Connecting...") }}</span>
+                </div>
+            </div>
         </main>
 
         <!-- Mobile Only -->
